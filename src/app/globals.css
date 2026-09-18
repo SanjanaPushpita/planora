@@ -1,26 +1,242 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --font-serif: 'Playfair Display', Georgia, serif;
+    --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+
+    /* Theme: Blush (Default) */
+    --bg-main: #fdf8f7;
+    --bg-paper: #ffffff;
+    --bg-paper-subtle: #fcf4f3;
+    --bg-paper-hover: #fae9e8;
+    --border-color: #f1dedc;
+    --border-strong: #e5c3c0;
+    --text-primary: #2d2424;
+    --text-secondary: #705e5d;
+    --text-muted: #9e8a89;
+    --accent: #d87070;
+    --accent-hover: #c45b5b;
+    --accent-soft: #fce8e6;
+    --accent-contrast: #ffffff;
+    --shadow-soft: 0 4px 20px -2px rgba(216, 112, 112, 0.08);
+    --bubble-bg: #fff5f5;
+    --bubble-border: #fed7d7;
+    --bubble-active: #d87070;
+  }
+
+  /* Minimal Theme */
+  [data-theme='minimal'] {
+    --bg-main: #f9fafb;
+    --bg-paper: #ffffff;
+    --bg-paper-subtle: #f3f4f6;
+    --bg-paper-hover: #e5e7eb;
+    --border-color: #e5e7eb;
+    --border-strong: #d1d5db;
+    --text-primary: #111827;
+    --text-secondary: #4b5563;
+    --text-muted: #9ca3af;
+    --accent: #1f2937;
+    --accent-hover: #111827;
+    --accent-soft: #f3f4f6;
+    --accent-contrast: #ffffff;
+    --shadow-soft: 0 4px 20px -2px rgba(0, 0, 0, 0.05);
+    --bubble-bg: #f9fafb;
+    --bubble-border: #e5e7eb;
+    --bubble-active: #1f2937;
+  }
+
+  /* Sage Botanical Theme */
+  [data-theme='sage'] {
+    --bg-main: #f5f8f5;
+    --bg-paper: #ffffff;
+    --bg-paper-subtle: #edf3ed;
+    --bg-paper-hover: #e2ece2;
+    --border-color: #dce7dc;
+    --border-strong: #c4d7c4;
+    --text-primary: #1e2d21;
+    --text-secondary: #495e4d;
+    --text-muted: #798f7e;
+    --accent: #436d4e;
+    --accent-hover: #36593f;
+    --accent-soft: #eaf1ea;
+    --accent-contrast: #ffffff;
+    --shadow-soft: 0 4px 20px -2px rgba(67, 109, 78, 0.08);
+    --bubble-bg: #f2f7f2;
+    --bubble-border: #d4e3d4;
+    --bubble-active: #436d4e;
+  }
+
+  /* Warm Paper Theme */
+  [data-theme='warm'] {
+    --bg-main: #fbf8f3;
+    --bg-paper: #ffffff;
+    --bg-paper-subtle: #f6f0e6;
+    --bg-paper-hover: #ede2d3;
+    --border-color: #ebdfce;
+    --border-strong: #dbcbb6;
+    --text-primary: #2d261e;
+    --text-secondary: #635748;
+    --text-muted: #998976;
+    --accent: #b8623b;
+    --accent-hover: #a1502c;
+    --accent-soft: #faeee7;
+    --accent-contrast: #ffffff;
+    --shadow-soft: 0 4px 20px -2px rgba(184, 98, 59, 0.08);
+    --bubble-bg: #faf4ec;
+    --bubble-border: #ebd8c2;
+    --bubble-active: #b8623b;
+  }
+
+  /* Lavender Mist Theme */
+  [data-theme='lavender'] {
+    --bg-main: #f8f6fc;
+    --bg-paper: #ffffff;
+    --bg-paper-subtle: #f1edfa;
+    --bg-paper-hover: #e8e1f5;
+    --border-color: #e5ddf2;
+    --border-strong: #d0c2e6;
+    --text-primary: #282136;
+    --text-secondary: #5a4f70;
+    --text-muted: #8b7fa1;
+    --accent: #785a9c;
+    --accent-hover: #654787;
+    --accent-soft: #f1ecf7;
+    --accent-contrast: #ffffff;
+    --shadow-soft: 0 4px 20px -2px rgba(120, 90, 156, 0.08);
+    --bubble-bg: #f4effa;
+    --bubble-border: #dfd4f0;
+    --bubble-active: #785a9c;
+  }
+
+  /* Dark Modes */
+  [data-mode='dark'] {
+    --bg-main: #131215;
+    --bg-paper: #1c1a20;
+    --bg-paper-subtle: #24222a;
+    --bg-paper-hover: #2e2b36;
+    --border-color: #312e3b;
+    --border-strong: #464154;
+    --text-primary: #f5f3f7;
+    --text-secondary: #bab5c4;
+    --text-muted: #7f7a8c;
+    --shadow-soft: 0 6px 24px -2px rgba(0, 0, 0, 0.4);
+    --bubble-bg: #24222a;
+    --bubble-border: #383442;
+  }
+
+  [data-mode='dark'][data-theme='minimal'] {
+    --bg-main: #0f172a;
+    --bg-paper: #1e293b;
+    --bg-paper-subtle: #334155;
+    --bg-paper-hover: #475569;
+    --border-color: #334155;
+    --border-strong: #475569;
+    --text-primary: #f8fafc;
+    --text-secondary: #cbd5e1;
+    --text-muted: #94a3b8;
+    --accent: #38bdf8;
+    --accent-hover: #0ea5e9;
+    --accent-soft: #1e293b;
+    --accent-contrast: #0f172a;
+    --bubble-bg: #1e293b;
+    --bubble-border: #334155;
+    --bubble-active: #38bdf8;
+  }
+
+  [data-mode='dark'][data-theme='blush'] {
+    --accent: #f08c8c;
+    --accent-hover: #e27575;
+    --accent-soft: #302224;
+    --accent-contrast: #201315;
+    --bubble-active: #f08c8c;
+  }
+
+  [data-mode='dark'][data-theme='sage'] {
+    --bg-main: #111812;
+    --bg-paper: #19241b;
+    --bg-paper-subtle: #223024;
+    --bg-paper-hover: #2b3d2e;
+    --border-color: #2b3d2e;
+    --border-strong: #3b523f;
+    --accent: #6db67e;
+    --accent-hover: #5ba36c;
+    --accent-soft: #1f3022;
+    --accent-contrast: #0c160e;
+    --bubble-active: #6db67e;
+  }
+
+  [data-mode='dark'][data-theme='warm'] {
+    --bg-main: #171411;
+    --bg-paper: #221d18;
+    --bg-paper-subtle: #2c251f;
+    --bg-paper-hover: #383028;
+    --border-color: #3b3128;
+    --border-strong: #524438;
+    --accent: #e07f55;
+    --accent-hover: #cf6e44;
+    --accent-soft: #31231b;
+    --accent-contrast: #171411;
+    --bubble-active: #e07f55;
+  }
+
+  [data-mode='dark'][data-theme='lavender'] {
+    --bg-main: #14121a;
+    --bg-paper: #1d1a26;
+    --bg-paper-subtle: #282436;
+    --bg-paper-hover: #342f47;
+    --border-color: #38324a;
+    --border-strong: #4f4766;
+    --accent: #a582d4;
+    --accent-hover: #926ec2;
+    --accent-soft: #2c243b;
+    --accent-contrast: #14121a;
+    --bubble-active: #a582d4;
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  transition: background-color 0.2s ease, color 0.2s ease;
+  overflow-x: hidden;
+}
+
+/* Serif font for aesthetic headings */
+.font-serif-aesthetic {
+  font-family: 'Playfair Display', Georgia, Cambria, 'Times New Roman', Times, serif;
+}
+
+/* Delicate journal borders & paper texture */
+.journal-paper {
+  background-color: var(--bg-paper);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-soft);
+  border-radius: 1rem;
+}
+
+.journal-paper-subtle {
+  background-color: var(--bg-paper-subtle);
+  border: 1px solid var(--border-color);
+  border-radius: 0.75rem;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
