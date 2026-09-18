@@ -141,9 +141,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     setSaveStatus('saving');
     try {
       const updated = await storage.updatePage(id, updates);
-      await refreshPages();
+      setPages((prev) => prev.map((p) => (p.id === id ? { ...p, ...updates } : p)));
       setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 2000);
+      setTimeout(() => setSaveStatus('idle'), 1500);
       return updated;
     } catch (e) {
       setSaveStatus('error');

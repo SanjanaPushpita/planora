@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePlanner } from '../storage';
 
 export function useAutosave<T>(
@@ -10,36 +10,52 @@ export function useAutosave<T>(
 ) {
   const { setSaveStatus } = usePlanner();
   const latestDataRef = useRef<T>(data);
-  const isInitialMount = useRef(true);
+  const onSaveRef = useRef(onSave);
+  const prevSerializedRef = useRef<string | null>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isDirtyRef = useRef(false);
 
   latestDataRef.current = data;
-
-  const save = useCallback(async () => {
-    setSaveStatus('saving');
-    try {
-      await onSave(latestDataRef.current);
-      setSaveStatus('saved');
-      setTimeout(() => setSaveStatus('idle'), 1800);
-    } catch (e) {
-      console.error('Autosave error:', e);
-      setSaveStatus('error');
-    }
-  }, [onSave, setSaveStatus]);
+  onSaveRef.current = onSave;
 
   useEffect(() => {
-    if (isInitialMount.current) {
-      isInitialMount.current = false;
+    // Initial assignment
+    if (data === null || data === undefined) return;
+    
+    let currentSerialized = '';
+    try {
+      currentSerialized = JSON.stringify(data);
+    } catch {
       return;
     }
+
+    if (prevSerializedRef.current === null) {
+      prevSerializedRef.current = currentSerialized;
+      return;
+    }
+
+    if (currentSerialized === prevSerializedRef.current) {
+      return;
+    }
+
+    prevSerializedRef.current = currentSerialized;
+    isDirtyRef.current = true;
 
     if (timeoutRef.current) {
       clearTimeout(timeoutRef.current);
     }
 
-    setSaveStatus('saving');
-    timeoutRef.current = setTimeout(() => {
-      save();
+    timeoutRef.current = setTimeout(async () => {
+      setSaveStatus('saving');
+      try {
+        await onSaveRef.current(latestDataRef.current);
+        isDirtyRef.current = false;
+        setSaveStatus('saved');
+        setTimeout(() => setSaveStatus('idle'), 1500);
+      } catch (e) {
+        console.error('Autosave error:', e);
+        setSaveStatus('error');
+      }
     }, delay);
 
     return () => {
@@ -47,15 +63,18 @@ export function useAutosave<T>(
         clearTimeout(timeoutRef.current);
       }
     };
-  }, [data, delay, save, setSaveStatus]);
+  }, [data, delay, setSaveStatus]);
 
-  // Flush on unmount to prevent losing data when switching pages
+  // Flush on unmount only if changes were pending
   useEffect(() => {
     return () => {
       if (timeoutRef.current) {
         clearTimeout(timeoutRef.current);
-        onSave(latestDataRef.current);
+      }
+      if (isDirtyRef.current) {
+        onSaveRef.current(latestDataRef.current);
+        isDirtyRef.current = false;
       }
     };
-  }, [onSave]);
+  }, []);
 }
