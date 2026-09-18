@@ -17,7 +17,9 @@ import {
   GraduationCap, 
   FileText, 
   Layout, 
-  Sliders 
+  Sliders,
+  Heart,
+  AlertCircle 
 } from 'lucide-react';
 
 interface NewPageModalProps {
@@ -64,6 +66,13 @@ const TEMPLATES: TemplateOption[] = [
     IconComponent: Flame,
   },
   {
+    type: 'period',
+    name: 'Period Tracker',
+    description: 'Track cycles, symptoms, moods, and notes privately',
+    icon: '🌸',
+    IconComponent: Heart,
+  },
+  {
     type: 'checklist',
     name: 'Checklist / To-Do',
     description: 'Clean reorderable task list with checkoffs and priorities',
@@ -108,6 +117,7 @@ export function NewPageModal({ isOpen, onClose, defaultType }: NewPageModalProps
   const [title, setTitle] = useState('');
   const [icon, setIcon] = useState('✨');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [creationError, setCreationError] = useState<string | null>(null);
 
   // Challenge specific options
   const [challengeDays, setChallengeDays] = useState<number>(30);
@@ -120,11 +130,14 @@ export function NewPageModal({ isOpen, onClose, defaultType }: NewPageModalProps
   const handleTypeSelect = (template: TemplateOption) => {
     setSelectedType(template.type);
     setIcon(template.icon);
+    setCreationError(null);
     if (!title || TEMPLATES.some(t => title.startsWith(t.name))) {
       if (template.type === 'daily') {
         setTitle(`Daily Planner - ${plannerDate}`);
       } else if (template.type === 'challenge') {
         setTitle('30-Day Challenge');
+      } else if (template.type === 'period') {
+        setTitle('Period Tracker');
       } else {
         setTitle(template.name);
       }
@@ -136,8 +149,10 @@ export function NewPageModal({ isOpen, onClose, defaultType }: NewPageModalProps
     if (isSubmitting) return;
 
     setIsSubmitting(true);
+    setCreationError(null);
     try {
-      const finalTitle = title.trim() || `${TEMPLATES.find(t => t.type === selectedType)?.name || 'Untitled'}`;
+      const templateName = TEMPLATES.find(t => t.type === selectedType)?.name || 'Untitled';
+      const finalTitle = title.trim() || templateName;
       
       const metadata: Record<string, any> = {};
       if (selectedType === 'challenge') {
@@ -154,13 +169,19 @@ export function NewPageModal({ isOpen, onClose, defaultType }: NewPageModalProps
         metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
       });
 
+      if (!newPage || !newPage.id) {
+        throw new Error('Page creation failed. Please try again.');
+      }
+
       onClose();
       // Reset form
       setTitle('');
+      setCreationError(null);
       setIsSubmitting(false);
       router.push(`/pages/${newPage.id}`);
-    } catch (err) {
+    } catch (err: any) {
       console.error('Failed to create page:', err);
+      setCreationError(err?.message || 'Could not create page. Please try again.');
       setIsSubmitting(false);
     }
   };
@@ -294,6 +315,14 @@ export function NewPageModal({ isOpen, onClose, defaultType }: NewPageModalProps
                 }
               }}
             />
+          </div>
+        )}
+
+        {/* Creation Error Alert */}
+        {creationError && (
+          <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-red-700 dark:text-red-300 text-xs flex items-center gap-2 animate-fadeIn">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{creationError}</span>
           </div>
         )}
 

@@ -15,6 +15,7 @@ import { MealPlannerBlock } from './MealPlannerBlock';
 import { WinsReflectionBlock } from './WinsReflectionBlock';
 import { QuoteBlock } from './QuoteBlock';
 import { DividerBlock } from './DividerBlock';
+import { PeriodTrackerBlock } from './PeriodTrackerBlock';
 import { ChevronUp, ChevronDown, Copy, Trash2, GripVertical } from 'lucide-react';
 
 interface BlockRendererProps {
@@ -75,6 +76,8 @@ export function BlockRenderer({
         return <QuoteBlock content={block.content as any} onChange={handleContentChange} />;
       case 'divider':
         return <DividerBlock content={block.content as any} onChange={handleContentChange} />;
+      case 'period_tracker':
+        return <PeriodTrackerBlock content={block.content as any} onChange={handleContentChange} />;
       default:
         return (
           <div className="p-4 rounded-xl journal-paper-subtle text-xs text-[var(--text-muted)]">

@@ -15,35 +15,64 @@ import {
   MoreHorizontal, 
   ArrowLeft, 
   Sparkles, 
-  Calendar as CalendarIcon,
+  Calendar as CalendarIcon, 
   ShieldCheck,
+  RotateCcw,
   X
 } from 'lucide-react';
 
 export default function DynamicPageViewer({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const { storage } = usePlanner();
+  const { storage, pages, trashPages, restoreFromTrash, refreshPages } = usePlanner();
 
   const [initialPage, setInitialPage] = useState<PlannerPage | null>(null);
   const [initialBlocks, setInitialBlocks] = useState<PageBlock[]>([]);
   const [loading, setLoading] = useState(true);
+  const [trashedPage, setTrashedPage] = useState<PlannerPage | null>(null);
 
   // Initial load
   const loadPageData = useCallback(async () => {
+    setLoading(true);
+    const rawId = resolvedParams.id;
+    const decodedId = decodeURIComponent(rawId);
+
     try {
-      const p = await storage.getPageById(resolvedParams.id);
+      // 1. Check in-memory pages first (fastest, immediately available after createPage)
+      let p: PlannerPage | null = pages.find((item) => item.id === rawId || item.id === decodedId) || null;
+
+      // 2. Query storage by decoded and raw IDs
+      if (!p) {
+        p = await storage.getPageById(decodedId);
+      }
+      if (!p && decodedId !== rawId) {
+        p = await storage.getPageById(rawId);
+      }
+
+      // 3. If still not found, trigger refreshPages to synchronize
+      if (!p) {
+        await refreshPages();
+        p = (await storage.getPageById(decodedId)) || (await storage.getPageById(rawId));
+      }
+
+      // 4. Check if page is currently in trash
+      const inTrash = trashPages.find((item) => item.id === rawId || item.id === decodedId);
+      setTrashedPage(inTrash || null);
+
       if (p) {
         setInitialPage(p);
-        const b = await storage.getBlocksByPageId(resolvedParams.id);
+        const b = await storage.getBlocksByPageId(p.id);
         setInitialBlocks(b);
+      } else {
+        setInitialPage(null);
       }
     } catch (err) {
       console.error('Failed to load page:', err);
+      setInitialPage(null);
     } finally {
       setLoading(false);
     }
-  }, [storage, resolvedParams.id]);
+  }, [storage, pages, trashPages, refreshPages, resolvedParams.id]);
 
   useEffect(() => {
     loadPageData();
@@ -60,6 +89,39 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
     );
   }
 
+  if (trashedPage) {
+    return (
+      <div className="py-16 text-center space-y-4 max-w-md mx-auto">
+        <span className="text-4xl">🗑️</span>
+        <h2 className="font-serif-aesthetic text-2xl font-bold text-[var(--text-primary)]">
+          Page is in Trash
+        </h2>
+        <p className="text-xs text-[var(--text-secondary)]">
+          &ldquo;{trashedPage.title}&rdquo; is currently in your trash bin. You can restore it to continue journaling or return to your sanctuary.
+        </p>
+        <div className="flex items-center justify-center gap-3 pt-2">
+          <button
+            onClick={async () => {
+              await restoreFromTrash(trashedPage.id);
+              await loadPageData();
+            }}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] text-xs font-medium hover:bg-[var(--accent-hover)] transition-colors shadow-xs"
+          >
+            <RotateCcw className="w-4 h-4" />
+            <span>Restore Page</span>
+          </button>
+          <button
+            onClick={() => router.push('/')}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--bg-paper-subtle)] text-[var(--text-secondary)] text-xs font-medium hover:bg-[var(--bg-paper-hover)] transition-colors border border-[var(--border-color)]"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            <span>Return to Sanctuary</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!initialPage) {
     return (
       <div className="py-16 text-center space-y-4">
@@ -68,7 +130,7 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
           Page Not Found
         </h2>
         <p className="text-xs text-[var(--text-secondary)] max-w-sm mx-auto">
-          This planner page might have been moved to the trash or deleted.
+          This planner page might have been permanently deleted or does not exist.
         </p>
         <button
           onClick={() => router.push('/')}

@@ -7,7 +7,8 @@ export type PageType =
   | 'challenge' 
   | 'monthly' 
   | 'blank' 
-  | 'custom';
+  | 'custom'
+  | 'period';
 
 export type BlockType =
   | 'heading'
@@ -22,7 +23,8 @@ export type BlockType =
   | 'meal_planner'
   | 'wins_reflection'
   | 'quote'
-  | 'divider';
+  | 'divider'
+  | 'period_tracker';
 
 export type ThemeName = 'minimal' | 'blush' | 'sage' | 'warm' | 'lavender';
 export type ColorMode = 'light' | 'dark' | 'system';
@@ -169,6 +171,32 @@ export interface ParagraphContent {
   text: string;
 }
 
+export type PeriodFlow = 'spotting' | 'light' | 'medium' | 'heavy';
+
+export interface PeriodDayLog {
+  date: string; // 'YYYY-MM-DD'
+  isPeriod: boolean;
+  flow?: PeriodFlow;
+  pain?: number; // 0 to 10
+  mood?: string;
+  symptoms?: string[];
+  notes?: string;
+}
+
+export interface PeriodCycleHistory {
+  id: string;
+  startDate: string;
+  endDate: string;
+  durationDays: number;
+  cycleLengthDays?: number;
+}
+
+export interface PeriodTrackerContent {
+  logs: Record<string, PeriodDayLog>; // 'YYYY-MM-DD' -> log
+  customSymptoms?: string[];
+  notes?: string;
+}
+
 export type BlockContentMap = {
   heading: HeadingContent;
   paragraph: ParagraphContent;
@@ -183,6 +211,7 @@ export type BlockContentMap = {
   wins_reflection: WinsReflectionContent;
   quote: QuoteContent;
   divider: { style?: 'heart' | 'leaf' | 'line' };
+  period_tracker: PeriodTrackerContent;
 };
 
 export interface PageBlock<T extends BlockType = BlockType> {

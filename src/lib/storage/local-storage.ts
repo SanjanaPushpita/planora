@@ -98,7 +98,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
   async getPageById(id: string): Promise<PlannerPage | null> {
     this.ensureInitialized();
     const pages = this.getStored<PlannerPage[]>(STORAGE_KEYS.PAGES, INITIAL_PAGES);
-    return pages.find(p => p.id === id) || null;
+    const decodedId = decodeURIComponent(id);
+    return pages.find(p => p.id === id || p.id === decodedId) || null;
   }
 
   async createPage(params: {
@@ -125,7 +126,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
       journal: '📖',
       monthly: '🗓️',
       blank: '📄',
-      custom: '💡'
+      custom: '💡',
+      period: '🌸'
     };
 
     const newPage: PlannerPage = {

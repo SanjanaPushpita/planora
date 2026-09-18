@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import Link from 'next/navigation';
+import Link from 'next/link';
 import { usePlanner } from '@/lib/storage';
 import { PageType } from '@/lib/types';
 import { formatDate } from '@/lib/utils';
@@ -29,6 +29,7 @@ export default function AllPagesView() {
     { id: 'favorites', label: 'Favorites' },
     { id: 'daily', label: 'Daily Planners' },
     { id: 'habit', label: 'Habit Trackers' },
+    { id: 'period', label: 'Period Trackers' },
     { id: 'study', label: 'Study & Research' },
     { id: 'challenge', label: 'Challenges' },
     { id: 'checklist', label: 'Checklists' },

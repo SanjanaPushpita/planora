@@ -127,6 +127,11 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     setSaveStatus('saving');
     try {
       const newPage = await storage.createPage(params);
+      if (!newPage || !newPage.id) {
+        throw new Error('Storage failed to return a valid page record.');
+      }
+      // Immediately register in React state pages for zero-latency UI consistency
+      setPages((prev) => [newPage, ...prev.filter((p) => p.id !== newPage.id)]);
       await refreshPages();
       setSaveStatus('saved');
       setTimeout(() => setSaveStatus('idle'), 2000);

@@ -17,6 +17,7 @@ import {
   Sparkles, 
   Quote, 
   Minus,
+  Heart,
   X
 } from 'lucide-react';
 
@@ -46,6 +47,7 @@ const BLOCK_OPTIONS: BlockOption[] = [
   { type: 'heading', label: 'Heading', description: 'Section headers (H1, H2, H3)', icon: Heading },
   { type: 'quote', label: 'Inspirational Quote', description: 'Editorial callout quote with author', icon: Quote },
   { type: 'divider', label: 'Decorative Divider', description: 'Delicate botanical or heart line divider', icon: Minus },
+  { type: 'period_tracker', label: 'Period Tracker', description: 'Cycle calendar, symptoms, flow, and notes', icon: Heart },
 ];
 
 export function AddBlockMenu({ onAddBlock, className }: AddBlockMenuProps) {

@@ -117,6 +117,13 @@ export function getDefaultBlockContent<T extends BlockType>(type: T, metadata?: 
         style: 'heart'
       } as unknown as BlockContentMap[T];
 
+    case 'period_tracker':
+      return {
+        logs: {},
+        customSymptoms: [],
+        notes: '',
+      } as unknown as BlockContentMap[T];
+
     default:
       return {} as unknown as BlockContentMap[T];
   }
@@ -325,6 +332,19 @@ export function generateTemplateBlocks(pageId: string, pageType: PageType, metad
           type: 'paragraph',
           content: { text: 'Notes, themes, and important dates for this month...' },
           position: 2,
+          created_at: now,
+          updated_at: now,
+        }
+      ];
+
+    case 'period':
+      return [
+        {
+          id: generateId(),
+          page_id: pageId,
+          type: 'period_tracker',
+          content: getDefaultBlockContent('period_tracker'),
+          position: 0,
           created_at: now,
           updated_at: now,
         }

@@ -87,8 +87,9 @@ export class SupabasePlannerStorage implements IPlannerStorage {
 
   async getPageById(id: string): Promise<PlannerPage | null> {
     if (!isSupabaseConfigured || !supabase) return this.fallback.getPageById(id);
+    const decodedId = decodeURIComponent(id);
     try {
-      const { data, error } = await supabase.from('pages').select('*').eq('id', id).single();
+      const { data, error } = await supabase.from('pages').select('*').or(`id.eq.${id},id.eq.${decodedId}`).maybeSingle();
       if (error || !data) return this.fallback.getPageById(id);
       return data;
     } catch {
@@ -107,10 +108,16 @@ export class SupabasePlannerStorage implements IPlannerStorage {
     if (!isSupabaseConfigured || !supabase) return this.fallback.createPage(params);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.warn('[Supabase] Unauthenticated session detected, creating page in local storage');
+        return this.fallback.createPage(params);
+      }
+
       const pageId = 'page-' + generateId();
       const iconMap: Record<PageType, string> = {
         daily: '✨', habit: '🌿', study: '📚', challenge: '🌸',
-        checklist: '📝', journal: '📖', monthly: '🗓️', blank: '📄', custom: '💡'
+        checklist: '📝', journal: '📖', monthly: '🗓️', blank: '📄', custom: '💡',
+        period: '🌸'
       };
 
       const newPage: PlannerPage = {
@@ -129,20 +136,29 @@ export class SupabasePlannerStorage implements IPlannerStorage {
         metadata: params.metadata,
       };
 
-      await supabase.from('pages').insert({
+      const { error: pageError } = await supabase.from('pages').insert({
         ...newPage,
-        user_id: user?.id,
+        user_id: user.id,
       });
+
+      if (pageError) {
+        console.error('[Supabase createPage error]', pageError);
+        return this.fallback.createPage(params);
+      }
 
       const templateBlocks = generateTemplateBlocks(pageId, params.page_type, params.metadata);
       if (templateBlocks.length > 0) {
-        await supabase.from('page_blocks').insert(
-          templateBlocks.map(b => ({ ...b, user_id: user?.id }))
+        const { error: blockError } = await supabase.from('page_blocks').insert(
+          templateBlocks.map(b => ({ ...b, user_id: user.id }))
         );
+        if (blockError) {
+          console.error('[Supabase createBlocks error]', blockError);
+        }
       }
 
       return newPage;
-    } catch {
+    } catch (err) {
+      console.error('[Supabase createPage exception]', err);
       return this.fallback.createPage(params);
     }
   }
