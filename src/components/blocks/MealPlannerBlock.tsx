@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MealPlannerContent } from '@/lib/types';
-import { useAutosave } from '@/lib/hooks/useAutosave';
 import { Utensils, Coffee, Sun, Sunset, Apple } from 'lucide-react';
 
 interface MealPlannerBlockProps {
@@ -20,9 +19,17 @@ export function MealPlannerBlock({ content, onChange }: MealPlannerBlockProps) {
     }
   );
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateMeal = (key: keyof MealPlannerContent, value: string) => {
+    const next = { ...data, [key]: value };
+    setData(next);
+    onChange(next);
+  };
 
   const meals = [
     { key: 'breakfast', label: 'Breakfast', icon: Coffee, placeholder: 'e.g. Oatmeal & berries...' },
@@ -51,7 +58,7 @@ export function MealPlannerBlock({ content, onChange }: MealPlannerBlockProps) {
               </div>
               <textarea
                 value={data[m.key] || ''}
-                onChange={(e) => setData((prev) => ({ ...prev, [m.key]: e.target.value }))}
+                onChange={(e) => updateMeal(m.key, e.target.value)}
                 placeholder={m.placeholder}
                 rows={2}
                 className="w-full text-xs bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[var(--accent)] rounded p-1 text-[var(--text-primary)] resize-none"

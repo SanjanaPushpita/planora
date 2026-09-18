@@ -15,7 +15,8 @@ import {
   Check, 
   Loader2, 
   User,
-  Heart
+  Heart,
+  AlertCircle
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -78,6 +79,12 @@ export function Header({
           <div className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
             <Check className="w-3.5 h-3.5" />
             <span>Saved</span>
+          </div>
+        )}
+        {saveStatus === 'error' && (
+          <div className="flex items-center gap-1 text-red-600 dark:text-red-400 font-medium">
+            <AlertCircle className="w-3.5 h-3.5" />
+            <span>Save error</span>
           </div>
         )}
         {saveStatus === 'idle' && (

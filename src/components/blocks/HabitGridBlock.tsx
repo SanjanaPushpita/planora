@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HabitBlockContent, HabitItem } from '@/lib/types';
 import { generateId, getDaysInMonth, MONTH_NAMES, calculateHabitStreak } from '@/lib/utils';
-import { useAutosave } from '@/lib/hooks/useAutosave';
 import { 
   Plus, 
   Trash2, 
@@ -11,7 +10,6 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Flame, 
-  Sparkles, 
   Trophy 
 } from 'lucide-react';
 
@@ -33,9 +31,19 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
 
   const [newHabitName, setNewHabitName] = useState('');
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (updater: (prev: HabitBlockContent) => HabitBlockContent) => {
+    setData((prev) => {
+      const next = updater(prev);
+      onChange(next);
+      return next;
+    });
+  };
 
   const daysInMonth = getDaysInMonth(data.year, data.month);
   const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
@@ -56,14 +64,14 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
       newMonth = 0;
       newYear += 1;
     }
-    setData((prev) => ({ ...prev, month: newMonth, year: newYear }));
+    updateData((prev) => ({ ...prev, month: newMonth, year: newYear }));
   };
 
   const handleToggleCell = (habitId: string, day: number) => {
     const dateKey = getDateKey(day);
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      habits: prev.habits.map((h) => {
+      habits: (prev.habits || []).map((h) => {
         if (h.id !== habitId) return h;
         const currentCompleted = Boolean(h.completedDates?.[dateKey]);
         const updatedDates = { ...(h.completedDates || {}) };
@@ -78,16 +86,16 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
   };
 
   const handleUpdateHabitName = (habitId: string, name: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      habits: prev.habits.map((h) => (h.id === habitId ? { ...h, name } : h)),
+      habits: (prev.habits || []).map((h) => (h.id === habitId ? { ...h, name } : h)),
     }));
   };
 
   const handleDeleteHabit = (habitId: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      habits: prev.habits.filter((h) => h.id !== habitId),
+      habits: (prev.habits || []).filter((h) => h.id !== habitId),
     }));
   };
 
@@ -98,22 +106,23 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
     const newHabit: HabitItem = {
       id: generateId(),
       name: newHabitName.trim(),
-      order: data.habits.length,
+      order: (data.habits || []).length,
       completedDates: {},
     };
 
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      habits: [...prev.habits, newHabit],
+      habits: [...(prev.habits || []), newHabit],
     }));
     setNewHabitName('');
   };
 
   // Monthly stats calculations
-  let totalPossibleChecks = data.habits.length * daysInMonth;
+  const habits = data.habits || [];
+  let totalPossibleChecks = habits.length * daysInMonth;
   let totalCompletedChecks = 0;
 
-  const habitStats = data.habits.map((h) => {
+  const habitStats = habits.map((h) => {
     let completedThisMonth = 0;
     daysArray.forEach((d) => {
       if (h.completedDates?.[getDateKey(d)]) {
@@ -139,7 +148,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
 
   return (
     <div className="journal-paper p-4 sm:p-6 space-y-6 overflow-hidden">
-      {/* Botanical Header & Month Selector inspired by Ref 1 & 4 */}
+      {/* Botanical Header & Month Selector */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[var(--border-color)] pb-4">
         <div>
           <div className="flex items-center gap-2">
@@ -159,7 +168,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
             <button
               type="button"
               onClick={() => handleMonthChange(-1)}
-              className="p-1 rounded-lg hover:bg-[var(--bg-paper-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="p-1 rounded-lg hover:bg-[var(--bg-paper-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
               title="Previous Month"
             >
               <ChevronLeft className="w-4 h-4" />
@@ -170,7 +179,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
             <button
               type="button"
               onClick={() => handleMonthChange(1)}
-              className="p-1 rounded-lg hover:bg-[var(--bg-paper-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+              className="p-1 rounded-lg hover:bg-[var(--bg-paper-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
               title="Next Month"
             >
               <ChevronRight className="w-4 h-4" />
@@ -195,7 +204,6 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
               <th className="py-2 px-2 text-center w-12" title="Current streak">
                 <Flame className="w-3.5 h-3.5 mx-auto text-amber-500" />
               </th>
-              {/* Day numbers 1 to 28/29/30/31 */}
               {daysArray.map((day) => (
                 <th
                   key={day}
@@ -208,7 +216,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
-            {data.habits.map((habit) => {
+            {habits.map((habit) => {
               const stat = habitStats.find((s) => s.id === habit.id);
               return (
                 <tr
@@ -240,7 +248,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
                     </span>
                   </td>
 
-                  {/* Day Checkoff Bubbles (inspired by Ref 1 & 4) */}
+                  {/* Day Checkoff Bubbles */}
                   {daysArray.map((day) => {
                     const isChecked = Boolean(habit.completedDates?.[getDateKey(day)]);
                     return (
@@ -248,7 +256,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
                         <button
                           type="button"
                           onClick={() => handleToggleCell(habit.id, day)}
-                          className={`w-5 h-5 rounded-full flex items-center justify-center mx-auto border transition-all text-[10px] ${
+                          className={`w-5 h-5 rounded-full flex items-center justify-center mx-auto border transition-all text-[10px] cursor-pointer ${
                             isChecked
                               ? 'bg-[var(--bubble-active)] border-[var(--bubble-active)] text-white shadow-2xs scale-105'
                               : 'bg-[var(--bubble-bg)] border-[var(--bubble-border)] hover:border-[var(--bubble-active)] text-[var(--text-muted)] hover:scale-105'
@@ -266,7 +274,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
                     <button
                       type="button"
                       onClick={() => handleDeleteHabit(habit.id)}
-                      className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity"
+                      className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity cursor-pointer"
                       title="Delete habit"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -276,7 +284,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
               );
             })}
 
-            {data.habits.length === 0 && (
+            {habits.length === 0 && (
               <tr>
                 <td
                   colSpan={daysInMonth + 4}
@@ -302,21 +310,21 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
         <button
           type="submit"
           disabled={!newHabitName.trim()}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-medium transition-colors disabled:opacity-40"
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-medium transition-colors disabled:opacity-40 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Add Habit</span>
         </button>
       </form>
 
-      {/* Habit Notes Section inspired by Ref 1 */}
+      {/* Habit Notes Section */}
       <div className="pt-2">
         <label className="block text-[11px] font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-1">
           Monthly Habit Notes & Intentions
         </label>
         <textarea
           value={data.notes || ''}
-          onChange={(e) => setData((prev) => ({ ...prev, notes: e.target.value }))}
+          onChange={(e) => updateData((prev) => ({ ...prev, notes: e.target.value }))}
           placeholder="Reflections on your consistency, what went well, and what to refine next month..."
           rows={2}
           className="w-full px-3.5 py-2 text-xs rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)] resize-none"

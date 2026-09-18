@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HeadingContent } from '@/lib/types';
-import { useAutosave } from '@/lib/hooks/useAutosave';
 
 interface HeadingBlockProps {
   content: HeadingContent;
@@ -12,9 +11,16 @@ interface HeadingBlockProps {
 export function HeadingBlock({ content, onChange }: HeadingBlockProps) {
   const [data, setData] = useState<HeadingContent>(content || { text: 'Heading', level: 2 });
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (next: HeadingContent) => {
+    setData(next);
+    onChange(next);
+  };
 
   const levelStyles = {
     1: 'font-serif-aesthetic text-2xl sm:text-3xl font-bold tracking-tight',
@@ -27,7 +33,7 @@ export function HeadingBlock({ content, onChange }: HeadingBlockProps) {
       <input
         type="text"
         value={data.text}
-        onChange={(e) => setData((prev) => ({ ...prev, text: e.target.value }))}
+        onChange={(e) => updateData({ ...data, text: e.target.value })}
         placeholder="Heading..."
         className={`w-full bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[var(--accent)] rounded px-1.5 py-1 text-[var(--text-primary)] ${
           levelStyles[data.level || 2]
@@ -39,7 +45,7 @@ export function HeadingBlock({ content, onChange }: HeadingBlockProps) {
           <button
             key={lvl}
             type="button"
-            onClick={() => setData((prev) => ({ ...prev, level: lvl }))}
+            onClick={() => updateData({ ...data, level: lvl })}
             className={`px-1.5 py-0.5 text-[10px] font-bold rounded ${
               data.level === lvl
                 ? 'bg-[var(--accent)] text-white'

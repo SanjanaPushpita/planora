@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WinsReflectionContent } from '@/lib/types';
-import { useAutosave } from '@/lib/hooks/useAutosave';
 import { Trophy, TrendingUp, Heart, Plus, Trash2 } from 'lucide-react';
 
 interface WinsReflectionBlockProps {
@@ -19,36 +18,43 @@ export function WinsReflectionBlock({ content, onChange }: WinsReflectionBlockPr
     }
   );
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (next: WinsReflectionContent) => {
+    setData(next);
+    onChange(next);
+  };
 
   const handleUpdateWin = (index: number, text: string) => {
     const updated = [...(data.wins || [])];
     updated[index] = text;
-    setData((prev) => ({ ...prev, wins: updated }));
+    updateData({ ...data, wins: updated });
   };
 
   const handleAddWin = () => {
-    setData((prev) => ({ ...prev, wins: [...(prev.wins || []), ''] }));
+    updateData({ ...data, wins: [...(data.wins || []), ''] });
   };
 
   const handleDeleteWin = (index: number) => {
-    setData((prev) => ({ ...prev, wins: prev.wins.filter((_, i) => i !== index) }));
+    updateData({ ...data, wins: (data.wins || []).filter((_, i) => i !== index) });
   };
 
   const handleUpdateImprovement = (index: number, text: string) => {
     const updated = [...(data.improvements || [])];
     updated[index] = text;
-    setData((prev) => ({ ...prev, improvements: updated }));
+    updateData({ ...data, improvements: updated });
   };
 
   const handleAddImprovement = () => {
-    setData((prev) => ({ ...prev, improvements: [...(prev.improvements || []), ''] }));
+    updateData({ ...data, improvements: [...(data.improvements || []), ''] });
   };
 
   const handleDeleteImprovement = (index: number) => {
-    setData((prev) => ({ ...prev, improvements: prev.improvements.filter((_, i) => i !== index) }));
+    updateData({ ...data, improvements: (data.improvements || []).filter((_, i) => i !== index) });
   };
 
   return (
@@ -148,7 +154,7 @@ export function WinsReflectionBlock({ content, onChange }: WinsReflectionBlockPr
         </label>
         <textarea
           value={data.gratitude || ''}
-          onChange={(e) => setData((prev) => ({ ...prev, gratitude: e.target.value }))}
+          onChange={(e) => updateData({ ...data, gratitude: e.target.value })}
           placeholder="I am grateful for..."
           rows={2}
           className="w-full text-xs p-2.5 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-none"

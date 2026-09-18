@@ -7,38 +7,36 @@ import { PlannerPage, PageBlock, BlockType } from '@/lib/types';
 import { BlockRenderer } from '@/components/blocks/BlockRenderer';
 import { AddBlockMenu } from '@/components/blocks/AddBlockMenu';
 import { PageSettingsModal } from '@/components/modals/PageSettingsModal';
-import { useAutosave } from '@/lib/hooks/useAutosave';
+import { SaveStatusIndicator } from '@/components/ui/SaveStatusIndicator';
+import { usePageSaveCoordinator } from '@/lib/hooks/usePageSaveCoordinator';
 import { generateId, formatDate } from '@/lib/utils';
 import { 
   Star, 
   MoreHorizontal, 
   ArrowLeft, 
   Sparkles, 
-  Plus, 
   Calendar as CalendarIcon,
-  Copy,
-  Trash2,
-  Share2
+  ShieldCheck,
+  X
 } from 'lucide-react';
 
 export default function DynamicPageViewer({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = use(params);
   const router = useRouter();
-  const { storage, pages, updatePage, duplicatePage, moveToTrash } = usePlanner();
+  const { storage } = usePlanner();
 
-  const [page, setPage] = useState<PlannerPage | null>(null);
-  const [blocks, setBlocks] = useState<PageBlock[]>([]);
+  const [initialPage, setInitialPage] = useState<PlannerPage | null>(null);
+  const [initialBlocks, setInitialBlocks] = useState<PageBlock[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  // Load page and its blocks
+  // Initial load
   const loadPageData = useCallback(async () => {
     try {
       const p = await storage.getPageById(resolvedParams.id);
       if (p) {
-        setPage(p);
+        setInitialPage(p);
         const b = await storage.getBlocksByPageId(resolvedParams.id);
-        setBlocks(b);
+        setInitialBlocks(b);
       }
     } catch (err) {
       console.error('Failed to load page:', err);
@@ -51,67 +49,6 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
     loadPageData();
   }, [loadPageData]);
 
-  // Autosave page title & icon
-  useAutosave(page, async (latestPage) => {
-    if (latestPage) {
-      await updatePage(latestPage.id, {
-        title: latestPage.title,
-        icon: latestPage.icon,
-        date: latestPage.date,
-      });
-    }
-  });
-
-  const handleUpdateBlock = async (updatedBlock: PageBlock) => {
-    setBlocks((prev) => prev.map((b) => (b.id === updatedBlock.id ? updatedBlock : b)));
-    await storage.saveBlock(updatedBlock);
-  };
-
-  const handleAddBlock = async (type: BlockType, insertIndex?: number) => {
-    if (!page) return;
-    const newBlock = await storage.createBlock(page.id, type, insertIndex);
-    const updated = await storage.getBlocksByPageId(page.id);
-    setBlocks(updated);
-  };
-
-  const handleDeleteBlock = async (blockId: string) => {
-    await storage.deleteBlock(blockId);
-    setBlocks((prev) => prev.filter((b) => b.id !== blockId));
-  };
-
-  const handleDuplicateBlock = async (block: PageBlock) => {
-    if (!page) return;
-    const duplicated: PageBlock = {
-      ...block,
-      id: generateId(),
-      position: block.position + 1,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
-    await storage.saveBlock(duplicated);
-    const updated = await storage.getBlocksByPageId(page.id);
-    setBlocks(updated);
-  };
-
-  const handleMoveBlock = async (index: number, direction: 'up' | 'down') => {
-    if (!page) return;
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= blocks.length) return;
-
-    const newBlocks = [...blocks];
-    const [moved] = newBlocks.splice(index, 1);
-    newBlocks.splice(targetIndex, 0, moved);
-
-    setBlocks(newBlocks);
-    await storage.reorderBlocks(page.id, newBlocks.map((b) => b.id));
-  };
-
-  const handleToggleFavorite = async () => {
-    if (!page) return;
-    const updated = await updatePage(page.id, { is_favorite: !page.is_favorite });
-    setPage(updated);
-  };
-
   if (loading) {
     return (
       <div className="py-20 flex flex-col items-center justify-center text-center space-y-3">
@@ -123,7 +60,7 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
     );
   }
 
-  if (!page) {
+  if (!initialPage) {
     return (
       <div className="py-16 text-center space-y-4">
         <span className="text-4xl">🍃</span>
@@ -145,9 +82,104 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
   }
 
   return (
+    <DynamicPageEditor
+      key={initialPage.id}
+      initialPage={initialPage}
+      initialBlocks={initialBlocks}
+    />
+  );
+}
+
+interface DynamicPageEditorProps {
+  initialPage: PlannerPage;
+  initialBlocks: PageBlock[];
+}
+
+function DynamicPageEditor({ initialPage, initialBlocks }: DynamicPageEditorProps) {
+  const router = useRouter();
+  const { storage, updatePage } = usePlanner();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+  // Centralized robust save coordinator
+  const {
+    page,
+    blocks,
+    saveState,
+    isDirty,
+    errorMessage,
+    recoveredDraft,
+    recordChange,
+    saveNow,
+    dismissRecoveredAlert,
+  } = usePageSaveCoordinator({
+    initialPage,
+    initialBlocks,
+    onPersist: async (snapshotPage, snapshotBlocks) => {
+      // 1. Update page metadata
+      await storage.updatePage(snapshotPage.id, {
+        title: snapshotPage.title,
+        icon: snapshotPage.icon,
+        date: snapshotPage.date,
+        is_favorite: snapshotPage.is_favorite,
+      });
+
+      // 2. Persist each block
+      await Promise.all(snapshotBlocks.map((b) => storage.saveBlock(b)));
+    },
+  });
+
+  const handleUpdateBlock = (updatedBlock: PageBlock) => {
+    const nextBlocks = blocks.map((b) => (b.id === updatedBlock.id ? updatedBlock : b));
+    recordChange(undefined, nextBlocks);
+  };
+
+  const handleAddBlock = async (type: BlockType, insertIndex?: number) => {
+    const newBlock = await storage.createBlock(page.id, type, insertIndex);
+    const updated = await storage.getBlocksByPageId(page.id);
+    recordChange(undefined, updated);
+  };
+
+  const handleDeleteBlock = async (blockId: string) => {
+    await storage.deleteBlock(blockId);
+    const updated = blocks.filter((b) => b.id !== blockId);
+    recordChange(undefined, updated);
+  };
+
+  const handleDuplicateBlock = async (block: PageBlock) => {
+    const duplicated: PageBlock = {
+      ...block,
+      id: generateId(),
+      position: block.position + 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    await storage.saveBlock(duplicated);
+    const updated = await storage.getBlocksByPageId(page.id);
+    recordChange(undefined, updated);
+  };
+
+  const handleMoveBlock = async (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= blocks.length) return;
+
+    const newBlocks = [...blocks];
+    const [moved] = newBlocks.splice(index, 1);
+    newBlocks.splice(targetIndex, 0, moved);
+
+    recordChange(undefined, newBlocks);
+    await storage.reorderBlocks(page.id, newBlocks.map((b) => b.id));
+  };
+
+  const handleToggleFavorite = async () => {
+    const newFav = !page.is_favorite;
+    await updatePage(page.id, { is_favorite: newFav });
+    recordChange({ is_favorite: newFav });
+  };
+
+  return (
     <div className="space-y-6 pb-20 max-w-4xl mx-auto">
-      {/* Top Breadcrumb & Actions Bar */}
-      <div className="flex items-center justify-between">
+      {/* Top Header Bar: Breadcrumb + Save Status Indicator & Actions */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <button
           onClick={() => router.back()}
           className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
@@ -156,7 +188,17 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
           <span>Back</span>
         </button>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Robust Save Status & Manual Save Button */}
+          <SaveStatusIndicator
+            state={saveState}
+            isDirty={isDirty}
+            onSave={saveNow}
+            errorMessage={errorMessage}
+          />
+
+          <div className="h-4 w-px bg-[var(--border-color)] hidden sm:block" />
+
           {/* Favorite Toggle */}
           <button
             onClick={handleToggleFavorite}
@@ -179,6 +221,25 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
         </div>
       </div>
 
+      {/* Recovered Unsaved Draft Banner */}
+      {recoveredDraft && (
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-800 text-amber-900 dark:text-amber-200 text-xs shadow-xs animate-fadeIn">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              <strong>Recovered unsaved draft:</strong> Planora safely recovered your latest edits from your local device backup.
+            </span>
+          </div>
+          <button
+            onClick={dismissRecoveredAlert}
+            className="p-1 rounded-md text-amber-700 hover:text-amber-900 dark:text-amber-300 hover:bg-amber-200/50 dark:hover:bg-amber-900/50 transition-colors"
+            title="Dismiss notice"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       {/* Page Title & Header Banner */}
       <div className="space-y-3 border-b border-[var(--border-color)] pb-5">
         <div className="flex items-start gap-3">
@@ -186,7 +247,7 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
           <input
             type="text"
             value={page.icon}
-            onChange={(e) => setPage({ ...page, icon: e.target.value })}
+            onChange={(e) => recordChange({ icon: e.target.value })}
             maxLength={4}
             className="w-12 h-12 text-center text-3xl rounded-2xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] focus:outline-none focus:border-[var(--accent)] shrink-0"
             title="Click to change icon"
@@ -197,7 +258,7 @@ export default function DynamicPageViewer({ params }: { params: Promise<{ id: st
             <input
               type="text"
               value={page.title}
-              onChange={(e) => setPage({ ...page, title: e.target.value })}
+              onChange={(e) => recordChange({ title: e.target.value })}
               placeholder="Untitled Planner..."
               className="w-full font-serif-aesthetic text-2xl sm:text-4xl font-bold tracking-tight text-[var(--text-primary)] bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[var(--accent)] rounded py-1"
             />

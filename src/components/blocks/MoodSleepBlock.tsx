@@ -1,8 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { MoodSleepContent } from '@/lib/types';
-import { useAutosave } from '@/lib/hooks/useAutosave';
 import { Moon, Star } from 'lucide-react';
 
 interface MoodSleepBlockProps {
@@ -29,9 +28,16 @@ export function MoodSleepBlock({ content, onChange }: MoodSleepBlockProps) {
     }
   );
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (next: MoodSleepContent) => {
+    setData(next);
+    onChange(next);
+  };
 
   return (
     <div className="journal-paper p-4 sm:p-5 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -47,7 +53,7 @@ export function MoodSleepBlock({ content, onChange }: MoodSleepBlockProps) {
               <button
                 key={m.id}
                 type="button"
-                onClick={() => setData((prev) => ({ ...prev, mood: m.id }))}
+                onClick={() => updateData({ ...data, mood: m.id })}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium border transition-all ${
                   isSelected
                     ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)] shadow-2xs scale-105'
@@ -63,7 +69,7 @@ export function MoodSleepBlock({ content, onChange }: MoodSleepBlockProps) {
         <input
           type="text"
           value={data.notes || ''}
-          onChange={(e) => setData((prev) => ({ ...prev, notes: e.target.value }))}
+          onChange={(e) => updateData({ ...data, notes: e.target.value })}
           placeholder="Mindset, energy level, or feelings..."
           className="w-full px-3 py-1.5 text-xs rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]"
         />
@@ -88,7 +94,7 @@ export function MoodSleepBlock({ content, onChange }: MoodSleepBlockProps) {
             max="12"
             step="0.5"
             value={data.sleepHours || 7.5}
-            onChange={(e) => setData((prev) => ({ ...prev, sleepHours: parseFloat(e.target.value) }))}
+            onChange={(e) => updateData({ ...data, sleepHours: parseFloat(e.target.value) })}
             className="flex-1 accent-[var(--accent)] cursor-pointer"
           />
         </div>
@@ -100,7 +106,7 @@ export function MoodSleepBlock({ content, onChange }: MoodSleepBlockProps) {
               <button
                 key={star}
                 type="button"
-                onClick={() => setData((prev) => ({ ...prev, sleepQuality: star }))}
+                onClick={() => updateData({ ...data, sleepQuality: star })}
                 className="p-1 hover:scale-110 transition-transform"
                 title={`Quality: ${star} of 5`}
               >

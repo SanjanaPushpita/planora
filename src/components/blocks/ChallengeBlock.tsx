@@ -1,11 +1,10 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import confetti from 'canvas-confetti';
 import { ChallengeBlockContent } from '@/lib/types';
 import { calculateChallengeProgress } from '@/lib/utils';
-import { useAutosave } from '@/lib/hooks/useAutosave';
-import { Flame, Trophy, Check, Calendar, Sparkles } from 'lucide-react';
+import { Flame, Check, Calendar } from 'lucide-react';
 
 interface ChallengeBlockProps {
   content: ChallengeBlockContent;
@@ -23,9 +22,19 @@ export function ChallengeBlock({ content, onChange }: ChallengeBlockProps) {
     }
   );
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (updater: (prev: ChallengeBlockContent) => ChallengeBlockContent) => {
+    setData((prev) => {
+      const next = updater(prev);
+      onChange(next);
+      return next;
+    });
+  };
 
   const totalDays = Math.max(1, data.totalDays || 30);
   const days = Array.from({ length: totalDays }, (_, i) => i + 1);
@@ -44,7 +53,6 @@ export function ChallengeBlock({ content, onChange }: ChallengeBlockProps) {
       updated = currentCompleted.filter((d) => d !== day);
     } else {
       updated = [...currentCompleted, day].sort((a, b) => a - b);
-      // Fire confetti if this completes the challenge or hits milestone
       if (updated.length === totalDays) {
         confetti({
           particleCount: 100,
@@ -54,7 +62,7 @@ export function ChallengeBlock({ content, onChange }: ChallengeBlockProps) {
       }
     }
 
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       completedDays: updated,
     }));
@@ -72,7 +80,7 @@ export function ChallengeBlock({ content, onChange }: ChallengeBlockProps) {
           <input
             type="text"
             value={data.title}
-            onChange={(e) => setData((prev) => ({ ...prev, title: e.target.value }))}
+            onChange={(e) => updateData((prev) => ({ ...prev, title: e.target.value }))}
             placeholder="Challenge Name (e.g. No Sugar, Morning Run)..."
             className="font-serif-aesthetic text-2xl sm:text-3xl font-bold tracking-tight text-[var(--text-primary)] text-center bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[var(--accent)] rounded px-2"
           />
@@ -102,7 +110,7 @@ export function ChallengeBlock({ content, onChange }: ChallengeBlockProps) {
         </div>
       </div>
 
-      {/* Numbered Day Bubbles Grid (Inspired directly by Reference 0 soft rounded bubbles) */}
+      {/* Numbered Day Bubbles Grid */}
       <div className="grid grid-cols-5 sm:grid-cols-6 md:grid-cols-10 gap-3 sm:gap-4 max-w-2xl mx-auto pt-2">
         {days.map((day) => {
           const isDone = (data.completedDays || []).includes(day);
@@ -111,7 +119,7 @@ export function ChallengeBlock({ content, onChange }: ChallengeBlockProps) {
               key={day}
               type="button"
               onClick={() => handleToggleDay(day)}
-              className={`aspect-square rounded-2xl flex flex-col items-center justify-center font-serif-aesthetic text-base sm:text-lg font-semibold border-2 transition-all duration-200 active:scale-95 shadow-2xs ${
+              className={`aspect-square rounded-2xl flex flex-col items-center justify-center font-serif-aesthetic text-base sm:text-lg font-semibold border-2 transition-all duration-200 active:scale-95 shadow-2xs cursor-pointer ${
                 isDone
                   ? 'bg-[var(--accent)] text-[var(--accent-contrast)] border-[var(--accent)] shadow-md scale-105'
                   : 'bg-[var(--bubble-bg)] text-[var(--text-primary)] border-[var(--bubble-border)] hover:border-[var(--accent)] hover:bg-[var(--bg-paper-hover)]'
@@ -134,7 +142,7 @@ export function ChallengeBlock({ content, onChange }: ChallengeBlockProps) {
         <input
           type="text"
           value={data.notes || ''}
-          onChange={(e) => setData((prev) => ({ ...prev, notes: e.target.value }))}
+          onChange={(e) => updateData((prev) => ({ ...prev, notes: e.target.value }))}
           placeholder="Challenge guidelines, rules, or motivational note..."
           className="w-full text-center text-xs text-[var(--text-secondary)] bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-[var(--accent)] rounded py-1"
         />

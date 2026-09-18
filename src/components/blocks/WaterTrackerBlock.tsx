@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { WaterTrackerContent } from '@/lib/types';
-import { useAutosave } from '@/lib/hooks/useAutosave';
-import { Droplet, Plus, Minus } from 'lucide-react';
+import { Droplet } from 'lucide-react';
 
 interface WaterTrackerBlockProps {
   content: WaterTrackerContent;
@@ -19,16 +18,23 @@ export function WaterTrackerBlock({ content, onChange }: WaterTrackerBlockProps)
     }
   );
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (next: WaterTrackerContent) => {
+    setData(next);
+    onChange(next);
+  };
 
   const target = Math.max(1, data.targetGlasses || 8);
   const consumed = Math.max(0, data.consumedGlasses || 0);
 
   const handleToggleGlass = (index: number) => {
     const newConsumed = index + 1 === consumed ? index : index + 1;
-    setData((prev) => ({ ...prev, consumedGlasses: newConsumed }));
+    updateData({ ...data, consumedGlasses: newConsumed });
   };
 
   const glasses = Array.from({ length: target }, (_, i) => i);

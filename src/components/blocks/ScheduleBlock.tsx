@@ -1,9 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ScheduleBlockContent, ScheduleItem } from '@/lib/types';
 import { generateId } from '@/lib/utils';
-import { useAutosave } from '@/lib/hooks/useAutosave';
 import { Clock, Plus, Trash2, Check } from 'lucide-react';
 
 interface ScheduleBlockProps {
@@ -16,28 +15,38 @@ export function ScheduleBlock({ content, onChange }: ScheduleBlockProps) {
   const [newTime, setNewTime] = useState('10:00 AM');
   const [newActivity, setNewActivity] = useState('');
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (updater: (prev: ScheduleBlockContent) => ScheduleBlockContent) => {
+    setData((prev) => {
+      const next = updater(prev);
+      onChange(next);
+      return next;
+    });
+  };
 
   const handleToggleSlot = (id: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      slots: prev.slots.map((s) => (s.id === id ? { ...s, completed: !s.completed } : s)),
+      slots: (prev.slots || []).map((s) => (s.id === id ? { ...s, completed: !s.completed } : s)),
     }));
   };
 
   const handleUpdateSlot = (id: string, updates: Partial<ScheduleItem>) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      slots: prev.slots.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+      slots: (prev.slots || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
     }));
   };
 
   const handleDeleteSlot = (id: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      slots: prev.slots.filter((s) => s.id !== id),
+      slots: (prev.slots || []).filter((s) => s.id !== id),
     }));
   };
 
@@ -52,9 +61,9 @@ export function ScheduleBlock({ content, onChange }: ScheduleBlockProps) {
       completed: false,
     };
 
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      slots: [...prev.slots, newSlot],
+      slots: [...(prev.slots || []), newSlot],
     }));
     setNewActivity('');
   };
@@ -70,13 +79,13 @@ export function ScheduleBlock({ content, onChange }: ScheduleBlockProps) {
           </h3>
         </div>
         <span className="text-[11px] text-[var(--text-muted)]">
-          {data.slots.length} time slots
+          {(data.slots || []).length} time slots
         </span>
       </div>
 
       {/* Schedule Rows */}
       <div className="space-y-2">
-        {data.slots.map((slot) => (
+        {(data.slots || []).map((slot) => (
           <div
             key={slot.id}
             className="group flex items-center gap-3 p-2 rounded-xl hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] transition-colors"
@@ -85,7 +94,7 @@ export function ScheduleBlock({ content, onChange }: ScheduleBlockProps) {
             <button
               type="button"
               onClick={() => handleToggleSlot(slot.id)}
-              className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all shrink-0 ${
+              className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all shrink-0 cursor-pointer ${
                 slot.completed
                   ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-contrast)]'
                   : 'bg-[var(--bg-paper)] border-[var(--border-strong)]'
@@ -117,7 +126,7 @@ export function ScheduleBlock({ content, onChange }: ScheduleBlockProps) {
             <button
               type="button"
               onClick={() => handleDeleteSlot(slot.id)}
-              className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity shrink-0"
+              className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity shrink-0 cursor-pointer"
               title="Delete row"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -125,7 +134,7 @@ export function ScheduleBlock({ content, onChange }: ScheduleBlockProps) {
           </div>
         ))}
 
-        {data.slots.length === 0 && (
+        {(data.slots || []).length === 0 && (
           <div className="py-4 text-center text-xs text-[var(--text-muted)] italic">
             No schedule blocks yet. Add a time slot below.
           </div>
@@ -151,7 +160,7 @@ export function ScheduleBlock({ content, onChange }: ScheduleBlockProps) {
         <button
           type="submit"
           disabled={!newActivity.trim()}
-          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--accent-soft)] hover:bg-[var(--border-strong)] text-[var(--text-primary)] text-xs font-medium transition-colors disabled:opacity-40"
+          className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-[var(--accent-soft)] hover:bg-[var(--border-strong)] text-[var(--text-primary)] text-xs font-medium transition-colors disabled:opacity-40 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Add Slot</span>

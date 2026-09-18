@@ -26,6 +26,17 @@ export type BlockType =
 
 export type ThemeName = 'minimal' | 'blush' | 'sage' | 'warm' | 'lavender';
 export type ColorMode = 'light' | 'dark' | 'system';
+export type SaveState = 'SAVED' | 'SAVING' | 'UNSAVED' | 'ERROR' | 'OFFLINE';
+
+export interface PageDraft {
+  pageId: string;
+  title: string;
+  icon: string;
+  date?: string;
+  blocks: PageBlock[];
+  updatedAt: number;
+  version: number;
+}
 
 export interface UserProfile {
   id: string;

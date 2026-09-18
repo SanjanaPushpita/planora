@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StudyLogBlockContent, StudySessionItem } from '@/lib/types';
 import { generateId, getTodayDateString } from '@/lib/utils';
-import { useAutosave } from '@/lib/hooks/useAutosave';
-import { GraduationCap, Plus, Trash2, Check, Clock, BookOpen } from 'lucide-react';
+import { Plus, Trash2, Check, Clock } from 'lucide-react';
 
 interface StudyLogBlockProps {
   content: StudyLogBlockContent;
@@ -20,28 +19,38 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
   const [newActual, setNewActual] = useState('60');
   const [newDate, setNewDate] = useState(getTodayDateString());
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (updater: (prev: StudyLogBlockContent) => StudyLogBlockContent) => {
+    setData((prev) => {
+      const next = updater(prev);
+      onChange(next);
+      return next;
+    });
+  };
 
   const handleToggleSession = (id: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      sessions: prev.sessions.map((s) => (s.id === id ? { ...s, completed: !s.completed } : s)),
+      sessions: (prev.sessions || []).map((s) => (s.id === id ? { ...s, completed: !s.completed } : s)),
     }));
   };
 
   const handleUpdateSession = (id: string, updates: Partial<StudySessionItem>) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      sessions: prev.sessions.map((s) => (s.id === id ? { ...s, ...updates } : s)),
+      sessions: (prev.sessions || []).map((s) => (s.id === id ? { ...s, ...updates } : s)),
     }));
   };
 
   const handleDeleteSession = (id: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      sessions: prev.sessions.filter((s) => s.id !== id),
+      sessions: (prev.sessions || []).filter((s) => s.id !== id),
     }));
   };
 
@@ -60,16 +69,17 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
       notes: '',
     };
 
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
-      sessions: [newSession, ...prev.sessions],
+      sessions: [newSession, ...(prev.sessions || [])],
     }));
 
     setNewSubject('');
     setNewTopic('');
   };
 
-  const totalActualMinutes = data.sessions.reduce((acc, s) => acc + (s.actualMinutes || 0), 0);
+  const sessions = data.sessions || [];
+  const totalActualMinutes = sessions.reduce((acc, s) => acc + (s.actualMinutes || 0), 0);
   const totalHours = (totalActualMinutes / 60).toFixed(1);
 
   return (
@@ -95,7 +105,7 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
             <span>{totalHours} Total Hours Logged</span>
           </div>
           <div className="text-xs text-[var(--text-muted)]">
-            {data.sessions.length} sessions
+            {sessions.length} sessions
           </div>
         </div>
       </div>
@@ -116,7 +126,7 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--border-color)]">
-            {data.sessions.map((session) => (
+            {sessions.map((session) => (
               <tr
                 key={session.id}
                 className="hover:bg-[var(--bg-paper-hover)]/60 transition-colors group text-xs"
@@ -126,7 +136,7 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
                   <button
                     type="button"
                     onClick={() => handleToggleSession(session.id)}
-                    className={`w-4 h-4 rounded flex items-center justify-center mx-auto border transition-all ${
+                    className={`w-4 h-4 rounded flex items-center justify-center mx-auto border transition-all cursor-pointer ${
                       session.completed
                         ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-contrast)]'
                         : 'bg-[var(--bg-paper)] border-[var(--border-strong)]'
@@ -193,7 +203,7 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
                   <button
                     type="button"
                     onClick={() => handleDeleteSession(session.id)}
-                    className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity"
+                    className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity cursor-pointer"
                     title="Delete session"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
@@ -202,7 +212,7 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
               </tr>
             ))}
 
-            {data.sessions.length === 0 && (
+            {sessions.length === 0 && (
               <tr>
                 <td colSpan={8} className="py-8 text-center text-xs text-[var(--text-muted)] italic">
                   No study sessions recorded yet. Add your study log below!
@@ -237,7 +247,7 @@ export function StudyLogBlock({ content, onChange }: StudyLogBlockProps) {
           <button
             type="submit"
             disabled={!newSubject.trim()}
-            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-medium transition-colors disabled:opacity-40"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-medium transition-colors disabled:opacity-40 cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Session</span>

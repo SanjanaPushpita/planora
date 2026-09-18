@@ -1,10 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ChecklistBlockContent, ChecklistItem } from '@/lib/types';
 import { generateId } from '@/lib/utils';
-import { useAutosave } from '@/lib/hooks/useAutosave';
-import { Check, Plus, Trash2, CheckCheck, RotateCcw } from 'lucide-react';
+import { Check, Plus, Trash2, CheckCheck } from 'lucide-react';
 
 interface ChecklistBlockProps {
   content: ChecklistBlockContent;
@@ -15,23 +14,33 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
   const [data, setData] = useState<ChecklistBlockContent>(content || { items: [] });
   const [newItemText, setNewItemText] = useState('');
 
-  useAutosave(data, (latest) => {
-    onChange(latest);
-  });
+  useEffect(() => {
+    if (content) {
+      setData(content);
+    }
+  }, [content]);
+
+  const updateData = (updater: (prev: ChecklistBlockContent) => ChecklistBlockContent) => {
+    setData((prev) => {
+      const next = updater(prev);
+      onChange(next);
+      return next;
+    });
+  };
 
   const handleTitleChange = (newTitle: string) => {
-    setData((prev) => ({ ...prev, title: newTitle }));
+    updateData((prev) => ({ ...prev, title: newTitle }));
   };
 
   const handleToggleItem = (id: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       items: prev.items.map((it) => (it.id === id ? { ...it, completed: !it.completed } : it)),
     }));
   };
 
   const handleUpdateItemText = (id: string, text: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       items: prev.items.map((it) => (it.id === id ? { ...it, text } : it)),
     }));
@@ -44,14 +53,14 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
       medium: 'high',
       high: undefined,
     };
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       items: prev.items.map((it) => (it.id === id ? { ...it, priority: cycle[String(it.priority)] } : it)),
     }));
   };
 
   const handleDeleteItem = (id: string) => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       items: prev.items.filter((it) => it.id !== id),
     }));
@@ -67,7 +76,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
       completed: false,
     };
 
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       items: [...prev.items, newItem],
     }));
@@ -75,20 +84,20 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
   };
 
   const handleMarkAllCompleted = () => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       items: prev.items.map((it) => ({ ...it, completed: true })),
     }));
   };
 
   const handleClearCompleted = () => {
-    setData((prev) => ({
+    updateData((prev) => ({
       ...prev,
       items: prev.items.filter((it) => !it.completed),
     }));
   };
 
-  const completedCount = data.items.filter((it) => it.completed).length;
+  const completedCount = (data.items || []).filter((it) => it.completed).length;
 
   return (
     <div className="p-4 sm:p-5 journal-paper space-y-4">
@@ -104,12 +113,12 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
 
         <div className="flex items-center gap-2 text-xs">
           <span className="text-[var(--text-muted)] text-[11px]">
-            {completedCount}/{data.items.length} done
+            {completedCount}/{(data.items || []).length} done
           </span>
           <button
             type="button"
             onClick={handleMarkAllCompleted}
-            className="flex items-center gap-1 px-2 py-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-paper-hover)] transition-colors"
+            className="flex items-center gap-1 px-2 py-1 rounded-md text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-paper-hover)] transition-colors cursor-pointer"
             title="Mark all as completed"
           >
             <CheckCheck className="w-3.5 h-3.5" />
@@ -119,7 +128,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
             <button
               type="button"
               onClick={handleClearCompleted}
-              className="flex items-center gap-1 px-2 py-1 rounded-md text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-md text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
               title="Clear completed items"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -131,7 +140,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
 
       {/* Items List */}
       <div className="space-y-1.5">
-        {data.items.map((item) => (
+        {(data.items || []).map((item) => (
           <div
             key={item.id}
             className="group flex items-center gap-2.5 p-1.5 sm:px-2 rounded-xl hover:bg-[var(--bg-paper-hover)] transition-colors"
@@ -140,7 +149,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
             <button
               type="button"
               onClick={() => handleToggleItem(item.id)}
-              className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all shrink-0 ${
+              className={`w-5 h-5 rounded-md flex items-center justify-center border transition-all shrink-0 cursor-pointer ${
                 item.completed
                   ? 'bg-[var(--accent)] border-[var(--accent)] text-[var(--accent-contrast)] shadow-2xs'
                   : 'bg-[var(--bg-paper)] border-[var(--border-strong)] hover:border-[var(--accent)]'
@@ -157,7 +166,6 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault();
-                  // Trigger focus to new item input
                   const addInput = document.getElementById('new-task-input');
                   addInput?.focus();
                 }
@@ -175,7 +183,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
               <button
                 type="button"
                 onClick={() => handleTogglePriority(item.id)}
-                className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full shrink-0 ${
+                className={`text-[10px] uppercase font-semibold px-2 py-0.5 rounded-full shrink-0 cursor-pointer ${
                   item.priority === 'high'
                     ? 'bg-red-100 text-red-700 dark:bg-red-950/60 dark:text-red-300'
                     : item.priority === 'medium'
@@ -192,7 +200,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
               <button
                 type="button"
                 onClick={() => handleTogglePriority(item.id)}
-                className="opacity-0 group-hover:opacity-100 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] px-1.5 py-0.5 rounded transition-opacity shrink-0"
+                className="opacity-0 group-hover:opacity-100 text-[10px] text-[var(--text-muted)] hover:text-[var(--text-secondary)] px-1.5 py-0.5 rounded transition-opacity shrink-0 cursor-pointer"
                 title="Add priority tag"
               >
                 +priority
@@ -203,7 +211,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
             <button
               type="button"
               onClick={() => handleDeleteItem(item.id)}
-              className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity shrink-0"
+              className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 rounded transition-opacity shrink-0 cursor-pointer"
               title="Delete item"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -211,7 +219,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
           </div>
         ))}
 
-        {data.items.length === 0 && (
+        {(data.items || []).length === 0 && (
           <div className="py-3 text-center text-xs text-[var(--text-muted)] italic">
             No items yet. Add your first priority below!
           </div>
@@ -231,7 +239,7 @@ export function ChecklistBlock({ content, onChange }: ChecklistBlockProps) {
         <button
           type="submit"
           disabled={!newItemText.trim()}
-          className="px-3.5 py-2 rounded-xl bg-[var(--accent-soft)] hover:bg-[var(--border-strong)] text-[var(--text-primary)] text-xs font-medium transition-colors disabled:opacity-40"
+          className="px-3.5 py-2 rounded-xl bg-[var(--accent-soft)] hover:bg-[var(--border-strong)] text-[var(--text-primary)] text-xs font-medium transition-colors disabled:opacity-40 cursor-pointer"
         >
           <Plus className="w-4 h-4" />
         </button>

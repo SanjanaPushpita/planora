@@ -212,13 +212,18 @@ export class SupabasePlannerStorage implements IPlannerStorage {
     if (!isSupabaseConfigured || !supabase) return this.fallback.saveBlock(block);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      await supabase.from('page_blocks').upsert({
+      const { error } = await supabase.from('page_blocks').upsert({
         ...block,
         user_id: user?.id,
         updated_at: new Date().toISOString(),
       });
+      if (error) {
+        console.error('[Supabase saveBlock error]', error);
+        return this.fallback.saveBlock(block);
+      }
       return block;
-    } catch {
+    } catch (err) {
+      console.error('[Supabase saveBlock catch]', err);
       return this.fallback.saveBlock(block);
     }
   }
