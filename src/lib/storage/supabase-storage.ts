@@ -117,7 +117,7 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       const iconMap: Record<PageType, string> = {
         daily: '✨', habit: '🌿', study: '📚', challenge: '🌸',
         checklist: '📝', journal: '📖', monthly: '🗓️', blank: '📄', custom: '💡',
-        period: '🌸'
+        period: '🌸', walk: '🚶‍♀️',
       };
 
       const newPage: PlannerPage = {

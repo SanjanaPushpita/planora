@@ -19,6 +19,7 @@ import {
   Layout, 
   Sliders,
   Heart,
+  Footprints,
   AlertCircle 
 } from 'lucide-react';
 
@@ -43,6 +44,13 @@ const TEMPLATES: TemplateOption[] = [
     description: 'Priorities, hourly schedule, meals, water, mood, sleep, and reflections',
     icon: '✨',
     IconComponent: Sparkles,
+  },
+  {
+    type: 'walk',
+    name: 'Hourly Walk Tracker',
+    description: 'Track short walking sessions throughout the day and visualize your consistency by hour.',
+    icon: '🚶‍♀️',
+    IconComponent: Footprints,
   },
   {
     type: 'habit',
@@ -138,6 +146,8 @@ export function NewPageModal({ isOpen, onClose, defaultType }: NewPageModalProps
         setTitle('30-Day Challenge');
       } else if (template.type === 'period') {
         setTitle('Period Tracker');
+      } else if (template.type === 'walk') {
+        setTitle('Hourly Walk Tracker');
       } else {
         setTitle(template.name);
       }

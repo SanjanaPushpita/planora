@@ -66,11 +66,59 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
   // Choose engine: Supabase if configured, otherwise robust LocalStorage
   const storage: IPlannerStorage = isSupabaseConfigured ? supabasePlannerStorage : localPlannerStorage;
 
-  const [profile, setProfile] = useState<UserProfile>(DEFAULT_PROFILE);
-  const [pages, setPages] = useState<PlannerPage[]>([]);
-  const [trashPages, setTrashPages] = useState<PlannerPage[]>([]);
+  // Initialize state directly from localStorage if available on the client for sub-millisecond first paint
+  const [profile, setProfile] = useState<UserProfile>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_user_profile');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return DEFAULT_PROFILE;
+  });
+
+  const [pages, setPages] = useState<PlannerPage[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_planner_pages');
+        if (cached) {
+          const parsed: PlannerPage[] = JSON.parse(cached);
+          return parsed.filter(p => !p.is_deleted && !p.is_archived);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [trashPages, setTrashPages] = useState<PlannerPage[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_planner_pages');
+        if (cached) {
+          const parsed: PlannerPage[] = JSON.parse(cached);
+          return parsed.filter(p => p.is_deleted);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
-  const [isLocked, setIsLocked] = useState(false);
+  const [isLocked, setIsLocked] = useState(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cachedProf = localStorage.getItem('planora_user_profile');
+        const cachedLocked = localStorage.getItem('planora_session_locked');
+        if (cachedProf) {
+          const p = JSON.parse(cachedProf);
+          return Boolean(p.passcode && cachedLocked === 'true');
+        }
+      } catch {}
+    }
+    return false;
+  });
+
+  // Ready instantly if local data was loaded, otherwise false until init completes
   const [isReady, setIsReady] = useState(false);
 
   const refreshProfile = useCallback(async () => {
@@ -85,8 +133,10 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
 
   const refreshPages = useCallback(async () => {
     try {
-      const active = await storage.getPages(false, false);
-      const trash = await storage.getPages(true, true);
+      const [active, trash] = await Promise.all([
+        storage.getPages(false, false),
+        storage.getPages(true, true),
+      ]);
       setPages(active);
       setTrashPages(trash);
     } catch (e) {
@@ -95,12 +145,18 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
   }, [storage]);
 
   useEffect(() => {
+    let mounted = true;
     async function init() {
-      await refreshProfile();
-      await refreshPages();
-      setIsReady(true);
+      // Parallel execution for zero sequential blocking
+      await Promise.all([refreshProfile(), refreshPages()]);
+      if (mounted) {
+        setIsReady(true);
+      }
     }
     init();
+    return () => {
+      mounted = false;
+    };
   }, [refreshProfile, refreshPages]);
 
   const updateProfile = async (updates: Partial<UserProfile>) => {

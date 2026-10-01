@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { WinsReflectionContent } from '@/lib/types';
-import { Trophy, TrendingUp, Heart, Plus, Trash2 } from 'lucide-react';
+import { Trophy, TrendingUp, Heart, Plus, Trash2, Sparkles } from 'lucide-react';
+import { RichTextEditor } from '../ui/RichTextEditor';
 
 interface WinsReflectionBlockProps {
   content: WinsReflectionContent;
@@ -68,7 +69,7 @@ export function WinsReflectionBlock({ content, onChange }: WinsReflectionBlockPr
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Today's Wins */}
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
               <Trophy className="w-3.5 h-3.5 text-amber-500" />
@@ -83,31 +84,35 @@ export function WinsReflectionBlock({ content, onChange }: WinsReflectionBlockPr
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {(data.wins || []).map((win, idx) => (
-              <div key={idx} className="flex items-center gap-2 group">
-                <span className="text-xs text-[var(--accent)]">•</span>
-                <input
-                  type="text"
-                  value={win}
-                  onChange={(e) => handleUpdateWin(idx, e.target.value)}
-                  placeholder="What went well today?..."
-                  className="flex-1 text-xs py-1 px-2 rounded-lg bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleDeleteWin(idx)}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+              <div key={idx} className="flex items-start gap-2 group">
+                <span className="text-xs text-[var(--accent)] mt-2 font-bold">•</span>
+                <div className="flex-1">
+                  <RichTextEditor
+                    value={win}
+                    onChange={(text) => handleUpdateWin(idx, text)}
+                    placeholder="What went well today?..."
+                    minHeight="38px"
+                  />
+                </div>
+                {(data.wins || []).length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteWin(idx)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 mt-2 transition-opacity"
+                    title="Delete entry"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
         </div>
 
         {/* Things to Improve */}
-        <div className="space-y-2.5">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
               <TrendingUp className="w-3.5 h-3.5 text-blue-500" />
@@ -122,24 +127,28 @@ export function WinsReflectionBlock({ content, onChange }: WinsReflectionBlockPr
               <Plus className="w-3.5 h-3.5" />
             </button>
           </div>
-          <div className="space-y-1.5">
+          <div className="space-y-2">
             {(data.improvements || []).map((imp, idx) => (
-              <div key={idx} className="flex items-center gap-2 group">
-                <span className="text-xs text-blue-500">•</span>
-                <input
-                  type="text"
-                  value={imp}
-                  onChange={(e) => handleUpdateImprovement(idx, e.target.value)}
-                  placeholder="What will you refine tomorrow?..."
-                  className="flex-1 text-xs py-1 px-2 rounded-lg bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-                />
-                <button
-                  type="button"
-                  onClick={() => handleDeleteImprovement(idx)}
-                  className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+              <div key={idx} className="flex items-start gap-2 group">
+                <span className="text-xs text-blue-500 mt-2 font-bold">•</span>
+                <div className="flex-1">
+                  <RichTextEditor
+                    value={imp}
+                    onChange={(text) => handleUpdateImprovement(idx, text)}
+                    placeholder="What will you refine tomorrow?..."
+                    minHeight="38px"
+                  />
+                </div>
+                {(data.improvements || []).length > 1 && (
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteImprovement(idx)}
+                    className="opacity-0 group-hover:opacity-100 p-1 text-[var(--text-muted)] hover:text-red-500 mt-2 transition-opacity"
+                    title="Delete entry"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -147,27 +156,19 @@ export function WinsReflectionBlock({ content, onChange }: WinsReflectionBlockPr
       </div>
 
       {/* Gratitude Statement */}
-      <div className="pt-2 border-t border-[var(--border-color)] space-y-1.5">
+      <div className="pt-3 border-t border-[var(--border-color)] space-y-2">
         <label className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
           <Heart className="w-3.5 h-3.5 text-[var(--accent)] fill-[var(--accent)]" />
           <span>Daily Gratitude</span>
         </label>
-        <textarea
+        <RichTextEditor
           value={data.gratitude || ''}
-          onChange={(e) => updateData({ ...data, gratitude: e.target.value })}
+          onChange={(text) => updateData({ ...data, gratitude: text })}
           placeholder="I am grateful for..."
-          rows={2}
-          className="w-full text-xs p-2.5 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-none"
+          minHeight="56px"
         />
       </div>
     </div>
   );
 }
 
-function Sparkles(props: any) {
-  return (
-    <svg {...props} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
-    </svg>
-  );
-}

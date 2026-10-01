@@ -127,7 +127,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
       monthly: '🗓️',
       blank: '📄',
       custom: '💡',
-      period: '🌸'
+      period: '🌸',
+      walk: '🚶‍♀️',
     };
 
     const newPage: PlannerPage = {

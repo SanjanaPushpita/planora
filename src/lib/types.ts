@@ -8,7 +8,8 @@ export type PageType =
   | 'monthly' 
   | 'blank' 
   | 'custom'
-  | 'period';
+  | 'period'
+  | 'walk';
 
 export type BlockType =
   | 'heading'
@@ -24,7 +25,8 @@ export type BlockType =
   | 'wins_reflection'
   | 'quote'
   | 'divider'
-  | 'period_tracker';
+  | 'period_tracker'
+  | 'walk_tracker';
 
 export type ThemeName = 'minimal' | 'blush' | 'sage' | 'warm' | 'lavender';
 export type ColorMode = 'light' | 'dark' | 'system';
@@ -197,6 +199,30 @@ export interface PeriodTrackerContent {
   notes?: string;
 }
 
+export type WalkFeeling = 'very_tired' | 'tired' | 'okay' | 'good' | 'energized';
+
+export interface WalkSession {
+  id: string;
+  user_id?: string;
+  tracker_id?: string; // or page_id
+  started_at: string; // ISO string
+  ended_at: string; // ISO string
+  duration_seconds: number;
+  target_duration_seconds: number;
+  date: string; // YYYY-MM-DD of session start
+  hour: number; // 0..23 of session start
+  feeling?: WalkFeeling | null;
+  note?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WalkTrackerContent {
+  targetMinutes: number; // default 5 (minutes)
+  sessions: WalkSession[];
+  notes?: string;
+}
+
 export type BlockContentMap = {
   heading: HeadingContent;
   paragraph: ParagraphContent;
@@ -212,6 +238,7 @@ export type BlockContentMap = {
   quote: QuoteContent;
   divider: { style?: 'heart' | 'leaf' | 'line' };
   period_tracker: PeriodTrackerContent;
+  walk_tracker: WalkTrackerContent;
 };
 
 export interface PageBlock<T extends BlockType = BlockType> {

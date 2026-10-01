@@ -124,6 +124,13 @@ export function getDefaultBlockContent<T extends BlockType>(type: T, metadata?: 
         notes: '',
       } as unknown as BlockContentMap[T];
 
+    case 'walk_tracker':
+      return {
+        targetMinutes: 5,
+        sessions: [],
+        notes: 'Small consistent walks refresh your mind and energize your body.',
+      } as unknown as BlockContentMap[T];
+
     default:
       return {} as unknown as BlockContentMap[T];
   }
@@ -344,6 +351,19 @@ export function generateTemplateBlocks(pageId: string, pageType: PageType, metad
           page_id: pageId,
           type: 'period_tracker',
           content: getDefaultBlockContent('period_tracker'),
+          position: 0,
+          created_at: now,
+          updated_at: now,
+        }
+      ];
+
+    case 'walk':
+      return [
+        {
+          id: generateId(),
+          page_id: pageId,
+          type: 'walk_tracker',
+          content: getDefaultBlockContent('walk_tracker'),
           position: 0,
           created_at: now,
           updated_at: now,

@@ -17,7 +17,8 @@ import {
   Trash2, 
   Settings, 
   ChevronRight,
-  Heart
+  Heart,
+  Footprints
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -33,6 +34,7 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
   const mainNav = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
+    { name: 'Walk Tracker', href: '/walks', icon: Footprints },
     { name: 'Habit Hub', href: '/habits', icon: Layout },
     { name: 'Study Tracker', href: '/study', icon: GraduationCap },
     { name: 'Challenges', href: '/challenges', icon: Flame },

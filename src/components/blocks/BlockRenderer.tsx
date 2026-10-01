@@ -16,6 +16,7 @@ import { WinsReflectionBlock } from './WinsReflectionBlock';
 import { QuoteBlock } from './QuoteBlock';
 import { DividerBlock } from './DividerBlock';
 import { PeriodTrackerBlock } from './PeriodTrackerBlock';
+import { WalkTrackerBlock } from './WalkTrackerBlock';
 import { ChevronUp, ChevronDown, Copy, Trash2, GripVertical } from 'lucide-react';
 
 interface BlockRendererProps {
@@ -78,6 +79,8 @@ export function BlockRenderer({
         return <DividerBlock content={block.content as any} onChange={handleContentChange} />;
       case 'period_tracker':
         return <PeriodTrackerBlock content={block.content as any} onChange={handleContentChange} />;
+      case 'walk_tracker':
+        return <WalkTrackerBlock content={block.content as any} onChange={handleContentChange} blockId={block.id} />;
       default:
         return (
           <div className="p-4 rounded-xl journal-paper-subtle text-xs text-[var(--text-muted)]">

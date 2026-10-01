@@ -53,68 +53,83 @@ export default function DashboardPage() {
 
   // Load dashboard widgets data
   useEffect(() => {
+    let active = true;
     async function loadDashboardData() {
       const habitsList: { blockId: string; habitId: string; name: string; isCompleted: boolean }[] = [];
       const tasksList: { blockId: string; taskId: string; text: string; completed: boolean }[] = [];
       const challengesList: { id: string; title: string; totalDays: number; completedCount: number; percentage: number }[] = [];
 
-      for (const p of pages) {
-        const blocks = await storage.getBlocksByPageId(p.id);
+      try {
+        const pageBlockResults = await Promise.all(
+          pages.map(async (p) => {
+            const blocks = await storage.getBlocksByPageId(p.id);
+            return { page: p, blocks };
+          })
+        );
 
-        for (const b of blocks) {
-          // Habits for today
-          if (b.type === 'habit_matrix') {
-            const content = b.content as HabitBlockContent;
-            if (content?.habits) {
-              content.habits.forEach((h) => {
-                habitsList.push({
-                  blockId: b.id,
-                  habitId: h.id,
-                  name: h.name,
-                  isCompleted: Boolean(h.completedDates?.[todayStr]),
+        if (!active) return;
+
+        for (const { page: p, blocks } of pageBlockResults) {
+          for (const b of blocks) {
+            // Habits for today
+            if (b.type === 'habit_matrix') {
+              const content = b.content as HabitBlockContent;
+              if (content?.habits) {
+                content.habits.forEach((h) => {
+                  habitsList.push({
+                    blockId: b.id,
+                    habitId: h.id,
+                    name: h.name,
+                    isCompleted: Boolean(h.completedDates?.[todayStr]),
+                  });
                 });
+              }
+            }
+
+            // Tasks for today's planner or active checklist
+            if (b.type === 'checklist' && (p.id === todayPlanner?.id || p.page_type === 'daily' || p.page_type === 'checklist')) {
+              const content = b.content as ChecklistBlockContent;
+              if (content?.items) {
+                content.items.slice(0, 5).forEach((it) => {
+                  tasksList.push({
+                    blockId: b.id,
+                    taskId: it.id,
+                    text: it.text,
+                    completed: it.completed,
+                  });
+                });
+              }
+            }
+
+            // Active challenges
+            if (b.type === 'challenge_grid') {
+              const content = b.content as ChallengeBlockContent;
+              const completedCount = (content.completedDays || []).length;
+              const totalDays = content.totalDays || 30;
+              const percentage = totalDays > 0 ? Math.round((completedCount / totalDays) * 100) : 0;
+              challengesList.push({
+                id: p.id,
+                title: content.title || p.title,
+                totalDays,
+                completedCount,
+                percentage,
               });
             }
-          }
-
-          // Tasks for today's planner or active checklist
-          if (b.type === 'checklist' && (p.id === todayPlanner?.id || p.page_type === 'daily' || p.page_type === 'checklist')) {
-            const content = b.content as ChecklistBlockContent;
-            if (content?.items) {
-              content.items.slice(0, 5).forEach((it) => {
-                tasksList.push({
-                  blockId: b.id,
-                  taskId: it.id,
-                  text: it.text,
-                  completed: it.completed,
-                });
-              });
-            }
-          }
-
-          // Active challenges
-          if (b.type === 'challenge_grid') {
-            const content = b.content as ChallengeBlockContent;
-            const completedCount = (content.completedDays || []).length;
-            const totalDays = content.totalDays || 30;
-            const percentage = totalDays > 0 ? Math.round((completedCount / totalDays) * 100) : 0;
-            challengesList.push({
-              id: p.id,
-              title: content.title || p.title,
-              totalDays,
-              completedCount,
-              percentage,
-            });
           }
         }
-      }
 
-      setTodayHabits(habitsList.slice(0, 6));
-      setTodayTasks(tasksList.slice(0, 6));
-      setActiveChallenges(challengesList.slice(0, 3));
+        setTodayHabits(habitsList.slice(0, 6));
+        setTodayTasks(tasksList.slice(0, 6));
+        setActiveChallenges(challengesList.slice(0, 3));
+      } catch (err) {
+        console.error('Error loading dashboard widgets:', err);
+      }
     }
 
     loadDashboardData();
+    return () => {
+      active = false;
+    };
   }, [pages, storage, todayPlanner, todayStr]);
 
   // Toggle habit directly on dashboard

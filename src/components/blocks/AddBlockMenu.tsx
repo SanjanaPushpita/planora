@@ -18,6 +18,7 @@ import {
   Quote, 
   Minus,
   Heart,
+  Footprints,
   X
 } from 'lucide-react';
 
@@ -34,6 +35,7 @@ interface BlockOption {
 }
 
 const BLOCK_OPTIONS: BlockOption[] = [
+  { type: 'walk_tracker', label: 'Hourly Walk Tracker', description: 'Timer, 24h heatmap, and hourly consistency log', icon: Footprints },
   { type: 'checklist', label: 'To-Do / Checklist', description: 'Reorderable tasks with priorities & checkmarks', icon: CheckSquare },
   { type: 'schedule', label: 'Daily Schedule', description: 'Time-block agenda with hourly activities', icon: Clock },
   { type: 'habit_matrix', label: 'Habit Tracker Matrix', description: 'Interactive 31-day habit calendar matrix', icon: Layout },

@@ -138,3 +138,151 @@ export function calculateChallengeProgress(completedDays: number[], totalDays: n
     longestStreak: maxStreak,
   };
 }
+
+/**
+ * Split a walking session across local 1-hour boundaries.
+ * For example: 10:57 PM to 11:06 PM (9 min) -> 3 min at 10 PM, 6 min at 11 PM.
+ */
+export interface WalkHourSegment {
+  date: string; // YYYY-MM-DD
+  hour: number; // 0..23
+  minutes: number;
+  seconds: number;
+}
+
+export function splitWalkSessionByHours(session: {
+  started_at: string;
+  ended_at?: string;
+  duration_seconds: number;
+}): WalkHourSegment[] {
+  const startMs = new Date(session.started_at).getTime();
+  if (isNaN(startMs)) return [];
+
+  const endMs = session.ended_at
+    ? new Date(session.ended_at).getTime()
+    : startMs + (session.duration_seconds || 0) * 1000;
+
+  if (isNaN(endMs) || endMs <= startMs) return [];
+
+  const segments: WalkHourSegment[] = [];
+  let currentMs = startMs;
+
+  while (currentMs < endMs) {
+    const curDate = new Date(currentMs);
+    const nextHour = new Date(
+      curDate.getFullYear(),
+      curDate.getMonth(),
+      curDate.getDate(),
+      curDate.getHours() + 1,
+      0,
+      0,
+      0
+    );
+
+    const segmentEndMs = Math.min(endMs, nextHour.getTime());
+    const durationMs = segmentEndMs - currentMs;
+    const durationSec = durationMs / 1000;
+    const durationMin = durationMs / (60 * 1000);
+
+    const year = curDate.getFullYear();
+    const month = String(curDate.getMonth() + 1).padStart(2, '0');
+    const day = String(curDate.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    const hour = curDate.getHours();
+
+    segments.push({
+      date: dateStr,
+      hour,
+      minutes: Math.round(durationMin * 100) / 100,
+      seconds: Math.round(durationSec),
+    });
+
+    currentMs = segmentEndMs;
+  }
+
+  return segments;
+}
+
+/**
+ * Format 24-hour integer (0..23) to 12-hour AM/PM label
+ */
+export function formatHourLabel(hour: number): string {
+  if (hour === 0) return '12 AM';
+  if (hour < 12) return `${hour} AM`;
+  if (hour === 12) return '12 PM';
+  return `${hour - 12} PM`;
+}
+
+/**
+ * Format hour range (e.g. 15 -> "3:00 PM – 3:59 PM")
+ */
+export function formatHourRange(hour: number): string {
+  const start = formatHourLabel(hour);
+  const nextHour = (hour + 1) % 24;
+  const end = formatHourLabel(nextHour);
+  return `${start} – ${end}`;
+}
+
+/**
+ * Format seconds to MM:SS or Xm Ys
+ */
+export function formatDuration(totalSeconds: number): string {
+  const sec = Math.max(0, Math.round(totalSeconds));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+/**
+ * Clean & safe HTML sanitizer for rich text content
+ */
+export function sanitizeHtml(rawHtml: string): string {
+  if (!rawHtml) return '';
+  if (typeof window === 'undefined') {
+    // Basic regex-based strip for SSR
+    return rawHtml
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
+      .replace(/on\w+="[^"]*"/g, '')
+      .replace(/on\w+='[^']*'/g, '')
+      .replace(/javascript:[^"']*/gi, '');
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, 'text/html');
+
+    // Allowed tags
+    const allowedTags = new Set([
+      'B', 'STRONG', 'I', 'EM', 'U', 'UL', 'OL', 'LI', 'P', 'BR', 'SPAN', 'DIV'
+    ]);
+
+    function cleanNode(node: Node) {
+      const children = Array.from(node.childNodes);
+      for (const child of children) {
+        if (child.nodeType === Node.ELEMENT_NODE) {
+          const el = child as HTMLElement;
+          if (!allowedTags.has(el.tagName)) {
+            // Replace disallowed tag with its inner text
+            const textNode = doc.createTextNode(el.textContent || '');
+            node.replaceChild(textNode, el);
+          } else {
+            // Remove all attributes except safe ones
+            const attrs = Array.from(el.attributes);
+            for (const attr of attrs) {
+              if (attr.name.startsWith('on') || attr.value.toLowerCase().includes('javascript:')) {
+                el.removeAttribute(attr.name);
+              }
+            }
+            cleanNode(el);
+          }
+        }
+      }
+    }
+
+    cleanNode(doc.body);
+    return doc.body.innerHTML;
+  } catch {
+    return rawHtml;
+  }
+}
+
