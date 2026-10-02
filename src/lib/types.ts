@@ -410,6 +410,118 @@ export interface ResearchPaper {
   updated_at: string;
 }
 
+export interface WeeklyReflection {
+  what_went_well?: string;
+  what_was_difficult?: string;
+  what_proud_of?: string;
+  what_learned?: string;
+  what_distracted_me?: string;
+  what_to_improve?: string;
+  what_to_stop?: string;
+  what_to_continue?: string;
+  biggest_win?: string;
+  notes?: string;
+  [key: string]: any;
+}
+
+export interface NextWeekPlanning {
+  priority_1?: string;
+  priority_2?: string;
+  priority_3?: string;
+  priorities?: string[];
+  deadlines?: string;
+  remember_items?: string;
+  reminders?: string;
+  personal_goal?: string;
+  work_goal?: string;
+  health_goal?: string;
+  [key: string]: any;
+}
+
+export interface WeeklyReview {
+  id: string;
+  user_id?: string;
+  title?: string;
+  week_start_date: string;
+  week_end_date: string;
+  week_start?: string;
+  week_end?: string;
+  week_number?: number;
+  year?: number;
+  rating_overall?: number;
+  rating_energy?: 'low' | 'medium' | 'high' | string;
+  rating_productivity?: number;
+  rating_stress?: number;
+  overall_rating?: number;
+  energy_rating?: 'low' | 'medium' | 'high' | string;
+  productivity_rating?: number;
+  stress_rating?: number;
+  reflection: WeeklyReflection;
+  next_week?: NextWeekPlanning;
+  next_week_planning?: NextWeekPlanning;
+  stats_snapshot?: Record<string, any>;
+  notes?: string;
+  status: 'draft' | 'completed';
+  created_at: string;
+  updated_at: string;
+}
+
+export type GoalStatus = 'not_started' | 'in_progress' | 'completed' | 'paused' | 'archived';
+export type GoalPriority = 'low' | 'medium' | 'high';
+export type GoalCategory = 'Academic' | 'Research' | 'Career' | 'Personal' | 'Health' | 'Finance' | 'Learning' | 'Project' | string;
+
+export interface GoalTask {
+  id: string;
+  goal_id: string;
+  milestone_id?: string | null;
+  user_id?: string;
+  title: string;
+  is_completed: boolean;
+  due_date?: string | null;
+  priority?: GoalPriority;
+  notes?: string;
+  position: number;
+  daily_planner_date?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GoalMilestone {
+  id: string;
+  goal_id: string;
+  user_id?: string;
+  title: string;
+  description?: string;
+  target_date?: string | null;
+  status?: 'pending' | 'in_progress' | 'completed' | string;
+  is_completed?: boolean;
+  position: number;
+  tasks?: GoalTask[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Goal {
+  id: string;
+  user_id?: string;
+  title: string;
+  description?: string;
+  category: GoalCategory;
+  status: GoalStatus;
+  priority: GoalPriority;
+  why_it_matters?: string;
+  start_date?: string | null;
+  target_date?: string | null;
+  progress: number; // 0..100
+  is_favorite?: boolean;
+  is_archived?: boolean;
+  is_trash?: boolean;
+  notes?: string;
+  milestones?: GoalMilestone[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PlannerBackup {
   version: number;
   exportedAt: string;
@@ -422,4 +534,8 @@ export interface PlannerBackup {
   vocabularyItems?: VocabularyItem[];
   focusSessions?: FocusSession[];
   researchPapers?: ResearchPaper[];
+  weeklyReviews?: WeeklyReview[];
+  goals?: Goal[];
+  goalMilestones?: GoalMilestone[];
+  goalTasks?: GoalTask[];
 }

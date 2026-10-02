@@ -10,7 +10,11 @@ import {
   KnowledgeItem,
   VocabularyItem,
   FocusSession,
-  ResearchPaper
+  ResearchPaper,
+  WeeklyReview,
+  Goal,
+  GoalMilestone,
+  GoalTask
 } from '../types';
 import { DEFAULT_PROFILE, INITIAL_PAGES, INITIAL_BLOCKS } from './seed-data';
 import { generateId } from '../utils';
@@ -31,6 +35,12 @@ const STORAGE_KEYS = {
   RESEARCH_PAPERS: 'planora_research_papers',
   FOCUS_PENDING_SYNC: 'planora_focus_pending_sync',
   PAPERS_PENDING_SYNC: 'planora_papers_pending_sync',
+  WEEKLY_REVIEWS: 'planora_weekly_reviews',
+  WEEKLY_PENDING_SYNC: 'planora_weekly_pending_sync',
+  GOALS: 'planora_goals',
+  GOAL_MILESTONES: 'planora_goal_milestones',
+  GOAL_TASKS: 'planora_goal_tasks',
+  GOALS_PENDING_SYNC: 'planora_goals_pending_sync',
 };
 
 export class LocalPlannerStorage implements IPlannerStorage {
@@ -773,6 +783,337 @@ export class LocalPlannerStorage implements IPlannerStorage {
     }
   }
 
+  // Weekly Reviews
+  async getWeeklyReviews(): Promise<WeeklyReview[]> {
+    this.ensureInitialized();
+    const reviews = this.getStored<WeeklyReview[]>(STORAGE_KEYS.WEEKLY_REVIEWS, []);
+    return reviews.sort((a, b) => new Date(b.week_start_date).getTime() - new Date(a.week_start_date).getTime());
+  }
+
+  async getWeeklyReviewByWeek(weekStartDate: string): Promise<WeeklyReview | null> {
+    this.ensureInitialized();
+    const reviews = this.getStored<WeeklyReview[]>(STORAGE_KEYS.WEEKLY_REVIEWS, []);
+    return reviews.find(r => r.week_start_date === weekStartDate) || null;
+  }
+
+  async saveWeeklyReview(review: WeeklyReview): Promise<WeeklyReview> {
+    this.ensureInitialized();
+    const reviews = this.getStored<WeeklyReview[]>(STORAGE_KEYS.WEEKLY_REVIEWS, []);
+    const existingIndex = reviews.findIndex(r => r.id === review.id || r.week_start_date === review.week_start_date);
+
+    const fullReview: WeeklyReview = {
+      ...review,
+      id: review.id || generateId(),
+      title: review.title || `Weekly Review (${review.week_start_date} – ${review.week_end_date})`,
+      status: review.status || 'draft',
+      rating_overall: review.rating_overall || 0,
+      rating_energy: review.rating_energy || 'medium',
+      rating_productivity: review.rating_productivity || 0,
+      rating_stress: review.rating_stress || 0,
+      reflection: review.reflection || {
+        went_well: '',
+        difficult: '',
+        proud_of: '',
+        learned: '',
+        distractions: '',
+        improve_next: '',
+        stop_doing: '',
+        continue_doing: '',
+        biggest_win: '',
+        notes: '',
+      },
+      next_week: review.next_week || {
+        priority_1: '',
+        priority_2: '',
+        priority_3: '',
+        deadlines: '',
+        reminders: '',
+        personal_goal: '',
+        work_goal: '',
+        health_goal: '',
+      },
+      stats_snapshot: review.stats_snapshot || {},
+      notes: review.notes || '',
+      created_at: review.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      reviews[existingIndex] = fullReview;
+    } else {
+      reviews.unshift(fullReview);
+    }
+
+    this.setStored(STORAGE_KEYS.WEEKLY_REVIEWS, reviews);
+    return fullReview;
+  }
+
+  async updateWeeklyReview(id: string, updates: Partial<WeeklyReview>): Promise<WeeklyReview> {
+    this.ensureInitialized();
+    const reviews = this.getStored<WeeklyReview[]>(STORAGE_KEYS.WEEKLY_REVIEWS, []);
+    const index = reviews.findIndex(r => r.id === id);
+    if (index === -1) {
+      throw new Error(`Weekly review ${id} not found.`);
+    }
+
+    const updated: WeeklyReview = {
+      ...reviews[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    reviews[index] = updated;
+    this.setStored(STORAGE_KEYS.WEEKLY_REVIEWS, reviews);
+    return updated;
+  }
+
+  async deleteWeeklyReview(id: string): Promise<void> {
+    this.ensureInitialized();
+    const reviews = this.getStored<WeeklyReview[]>(STORAGE_KEYS.WEEKLY_REVIEWS, []);
+    this.setStored(STORAGE_KEYS.WEEKLY_REVIEWS, reviews.filter(r => r.id !== id));
+  }
+
+  // Goals, Milestones, Tasks
+  async getGoals(includeArchived: boolean = true, includeTrash: boolean = false): Promise<Goal[]> {
+    this.ensureInitialized();
+    const goals = this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []);
+    return goals
+      .filter(g => {
+        if (!includeTrash && g.is_trash) return false;
+        if (!includeArchived && g.is_archived) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async getGoalById(id: string): Promise<Goal | null> {
+    this.ensureInitialized();
+    const goals = this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []);
+    return goals.find(g => g.id === id) || null;
+  }
+
+  async saveGoal(goal: Goal): Promise<Goal> {
+    this.ensureInitialized();
+    const goals = this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []);
+    const existingIndex = goals.findIndex(g => g.id === goal.id);
+
+    const fullGoal: Goal = {
+      ...goal,
+      id: goal.id || generateId(),
+      description: goal.description || '',
+      category: goal.category || 'Personal',
+      priority: goal.priority || 'medium',
+      status: goal.status || 'not_started',
+      why_it_matters: goal.why_it_matters || '',
+      progress: typeof goal.progress === 'number' ? goal.progress : 0,
+      is_favorite: Boolean(goal.is_favorite),
+      is_archived: Boolean(goal.is_archived),
+      is_trash: Boolean(goal.is_trash),
+      notes: goal.notes || '',
+      created_at: goal.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      goals[existingIndex] = fullGoal;
+    } else {
+      goals.unshift(fullGoal);
+    }
+
+    this.setStored(STORAGE_KEYS.GOALS, goals);
+    return fullGoal;
+  }
+
+  async updateGoal(id: string, updates: Partial<Goal>): Promise<Goal> {
+    this.ensureInitialized();
+    const goals = this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []);
+    const index = goals.findIndex(g => g.id === id);
+    if (index === -1) {
+      throw new Error(`Goal ${id} not found.`);
+    }
+
+    const updated: Goal = {
+      ...goals[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    goals[index] = updated;
+    this.setStored(STORAGE_KEYS.GOALS, goals);
+    return updated;
+  }
+
+  async deleteGoal(id: string, permanent: boolean = false): Promise<void> {
+    this.ensureInitialized();
+    const goals = this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []);
+    if (permanent) {
+      this.setStored(STORAGE_KEYS.GOALS, goals.filter(g => g.id !== id));
+      // Cleanup associated milestones and tasks
+      const milestones = this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []);
+      this.setStored(STORAGE_KEYS.GOAL_MILESTONES, milestones.filter(m => m.goal_id !== id));
+      const tasks = this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []);
+      this.setStored(STORAGE_KEYS.GOAL_TASKS, tasks.filter(t => t.goal_id !== id));
+    } else {
+      const index = goals.findIndex(g => g.id === id);
+      if (index >= 0) {
+        goals[index].is_trash = true;
+        goals[index].updated_at = new Date().toISOString();
+        this.setStored(STORAGE_KEYS.GOALS, goals);
+      }
+    }
+  }
+
+  async restoreGoal(id: string): Promise<void> {
+    this.ensureInitialized();
+    const goals = this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []);
+    const index = goals.findIndex(g => g.id === id);
+    if (index >= 0) {
+      goals[index].is_trash = false;
+      goals[index].is_archived = false;
+      goals[index].updated_at = new Date().toISOString();
+      this.setStored(STORAGE_KEYS.GOALS, goals);
+    }
+  }
+
+  async getMilestonesByGoalId(goalId: string): Promise<GoalMilestone[]> {
+    this.ensureInitialized();
+    const milestones = this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []);
+    return milestones
+      .filter(m => m.goal_id === goalId)
+      .sort((a, b) => a.position - b.position);
+  }
+
+  async saveMilestone(milestone: GoalMilestone): Promise<GoalMilestone> {
+    this.ensureInitialized();
+    const milestones = this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []);
+    const existingIndex = milestones.findIndex(m => m.id === milestone.id);
+
+    const fullMilestone: GoalMilestone = {
+      ...milestone,
+      id: milestone.id || generateId(),
+      description: milestone.description || '',
+      status: milestone.status || 'pending',
+      position: typeof milestone.position === 'number' ? milestone.position : milestones.filter(m => m.goal_id === milestone.goal_id).length,
+      created_at: milestone.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      milestones[existingIndex] = fullMilestone;
+    } else {
+      milestones.push(fullMilestone);
+    }
+
+    this.setStored(STORAGE_KEYS.GOAL_MILESTONES, milestones);
+    return fullMilestone;
+  }
+
+  async updateMilestone(id: string, updates: Partial<GoalMilestone>): Promise<GoalMilestone> {
+    this.ensureInitialized();
+    const milestones = this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []);
+    const index = milestones.findIndex(m => m.id === id);
+    if (index === -1) {
+      throw new Error(`Milestone ${id} not found.`);
+    }
+
+    const updated: GoalMilestone = {
+      ...milestones[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    milestones[index] = updated;
+    this.setStored(STORAGE_KEYS.GOAL_MILESTONES, milestones);
+    return updated;
+  }
+
+  async deleteMilestone(id: string): Promise<void> {
+    this.ensureInitialized();
+    const milestones = this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []);
+    this.setStored(STORAGE_KEYS.GOAL_MILESTONES, milestones.filter(m => m.id !== id));
+    // Cleanup milestone tasks
+    const tasks = this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []);
+    this.setStored(STORAGE_KEYS.GOAL_TASKS, tasks.filter(t => t.milestone_id !== id));
+  }
+
+  async reorderMilestones(goalId: string, orderedMilestoneIds: string[]): Promise<void> {
+    this.ensureInitialized();
+    const milestones = this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []);
+    const updated = milestones.map(m => {
+      if (m.goal_id === goalId) {
+        const newPos = orderedMilestoneIds.indexOf(m.id);
+        if (newPos >= 0) {
+          return { ...m, position: newPos, updated_at: new Date().toISOString() };
+        }
+      }
+      return m;
+    });
+    this.setStored(STORAGE_KEYS.GOAL_MILESTONES, updated);
+  }
+
+  async getGoalTasks(goalId?: string, milestoneId?: string): Promise<GoalTask[]> {
+    this.ensureInitialized();
+    let tasks = this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []);
+    if (goalId) {
+      tasks = tasks.filter(t => t.goal_id === goalId);
+    }
+    if (milestoneId) {
+      tasks = tasks.filter(t => t.milestone_id === milestoneId);
+    }
+    return tasks.sort((a, b) => a.position - b.position);
+  }
+
+  async saveGoalTask(task: GoalTask): Promise<GoalTask> {
+    this.ensureInitialized();
+    const tasks = this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []);
+    const existingIndex = tasks.findIndex(t => t.id === task.id);
+
+    const fullTask: GoalTask = {
+      ...task,
+      id: task.id || generateId(),
+      is_completed: Boolean(task.is_completed),
+      priority: task.priority || 'medium',
+      notes: task.notes || '',
+      position: typeof task.position === 'number' ? task.position : tasks.filter(t => t.goal_id === task.goal_id).length,
+      created_at: task.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      tasks[existingIndex] = fullTask;
+    } else {
+      tasks.push(fullTask);
+    }
+
+    this.setStored(STORAGE_KEYS.GOAL_TASKS, tasks);
+    return fullTask;
+  }
+
+  async updateGoalTask(id: string, updates: Partial<GoalTask>): Promise<GoalTask> {
+    this.ensureInitialized();
+    const tasks = this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []);
+    const index = tasks.findIndex(t => t.id === id);
+    if (index === -1) {
+      throw new Error(`Goal task ${id} not found.`);
+    }
+
+    const updated: GoalTask = {
+      ...tasks[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    tasks[index] = updated;
+    this.setStored(STORAGE_KEYS.GOAL_TASKS, tasks);
+    return updated;
+  }
+
+  async deleteGoalTask(id: string): Promise<void> {
+    this.ensureInitialized();
+    const tasks = this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []);
+    this.setStored(STORAGE_KEYS.GOAL_TASKS, tasks.filter(t => t.id !== id));
+  }
+
   // Backup & Restore
   async exportData(): Promise<PlannerBackup> {
     this.ensureInitialized();
@@ -788,6 +1129,10 @@ export class LocalPlannerStorage implements IPlannerStorage {
       vocabularyItems: this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []),
       focusSessions: this.getStored<FocusSession[]>(STORAGE_KEYS.FOCUS_SESSIONS, []),
       researchPapers: this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []),
+      weeklyReviews: this.getStored<WeeklyReview[]>(STORAGE_KEYS.WEEKLY_REVIEWS, []),
+      goals: this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []),
+      goalMilestones: this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []),
+      goalTasks: this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []),
     };
   }
 
@@ -818,6 +1163,18 @@ export class LocalPlannerStorage implements IPlannerStorage {
     if (Array.isArray(data.researchPapers)) {
       this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, data.researchPapers);
     }
+    if (Array.isArray(data.weeklyReviews)) {
+      this.setStored(STORAGE_KEYS.WEEKLY_REVIEWS, data.weeklyReviews);
+    }
+    if (Array.isArray(data.goals)) {
+      this.setStored(STORAGE_KEYS.GOALS, data.goals);
+    }
+    if (Array.isArray(data.goalMilestones)) {
+      this.setStored(STORAGE_KEYS.GOAL_MILESTONES, data.goalMilestones);
+    }
+    if (Array.isArray(data.goalTasks)) {
+      this.setStored(STORAGE_KEYS.GOAL_TASKS, data.goalTasks);
+    }
     return true;
   }
 
@@ -833,6 +1190,10 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, []);
     this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, []);
     this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, []);
+    this.setStored(STORAGE_KEYS.WEEKLY_REVIEWS, []);
+    this.setStored(STORAGE_KEYS.GOALS, []);
+    this.setStored(STORAGE_KEYS.GOAL_MILESTONES, []);
+    this.setStored(STORAGE_KEYS.GOAL_TASKS, []);
   }
 }
 

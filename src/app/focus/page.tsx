@@ -59,7 +59,8 @@ export default function FocusSessionsPage() {
     researchPapers,
     updateResearchPaper,
     saveKnowledgeItem,
-    learningSprints
+    learningSprints,
+    goals
   } = usePlanner();
 
   // Navigation tab: 'session' | 'history' | 'analytics' | 'heatmap'
@@ -75,6 +76,7 @@ export default function FocusSessionsPage() {
   const [isCustomDurationModalOpen, setIsCustomDurationModalOpen] = useState(false);
   
   // Relations
+  const [relatedGoalId, setRelatedGoalId] = useState<string>(() => searchParams.get('goalId') || '');
   const [relatedPaperId, setRelatedPaperId] = useState<string>('');
   const [relatedSprintId, setRelatedSprintId] = useState<string>('');
   const [relatedSubject, setRelatedSubject] = useState<string>('');
@@ -299,6 +301,7 @@ export default function FocusSessionsPage() {
       id: sessionId || `focus-${generateId()}`,
       title: title.trim() || 'Focus Session',
       category: finalCat,
+      related_goal_id: relatedGoalId || undefined,
       related_paper_id: relatedPaperId || undefined,
       related_sprint_id: relatedSprintId || undefined,
       related_subject_id: relatedSubject || undefined,
@@ -669,13 +672,33 @@ export default function FocusSessionsPage() {
                 </div>
               </div>
 
-              {/* Optional Links: Related Paper & Sprint & Study */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              {/* Optional Links: Related Goal, Paper & Sprint */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
+                {/* Related Goal */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1">
+                    <Target className="w-3.5 h-3.5 text-indigo-500" />
+                    <span>Link Goal (Optional)</span>
+                  </label>
+                  <select
+                    value={relatedGoalId}
+                    onChange={(e) => setRelatedGoalId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+                  >
+                    <option value="">-- None --</option>
+                    {(goals || []).filter(g => !g.is_trash).map((g) => (
+                      <option key={g.id} value={g.id}>
+                        {g.title} ({g.progress}%)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
                 {/* Related Paper */}
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1">
                     <FileText className="w-3.5 h-3.5 text-[var(--accent)]" />
-                    <span>Link Research Paper (Optional)</span>
+                    <span>Link Paper (Optional)</span>
                   </label>
                   <select
                     value={relatedPaperId}
@@ -695,7 +718,7 @@ export default function FocusSessionsPage() {
                 <div className="space-y-1.5">
                   <label className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1">
                     <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Link Learning Sprint (Optional)</span>
+                    <span>Link Sprint (Optional)</span>
                   </label>
                   <select
                     value={relatedSprintId}

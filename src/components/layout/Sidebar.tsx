@@ -22,7 +22,9 @@ import {
   Sparkles,
   Footprints,
   Target,
-  Layers
+  Layers,
+  Compass,
+  Flag
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -38,17 +40,24 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
     favorites, 
     recentPages, 
     trashPages, 
+    trashGoals,
     profile, 
     learningSprints, 
     knowledgeItems,
     focusSessions,
-    researchPapers 
+    researchPapers,
+    goals,
+    weeklyReviews
   } = usePlanner();
 
   const activePapersCount = researchPapers?.filter(p => !p.is_trash).length;
+  const activeGoalsCount = goals?.filter(g => !g.is_trash && g.status !== 'completed').length;
+  const totalTrashCount = trashPages.length + (trashGoals?.length || 0) + (researchPapers?.filter(p => p.is_trash).length || 0);
 
   const mainNav = [
     { name: 'Dashboard', href: '/', icon: Home },
+    { name: 'Weekly Review', href: '/weekly-review', icon: Compass },
+    { name: 'Goals', href: '/goals', icon: Flag, count: activeGoalsCount },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
     { name: 'Focus Sessions', href: '/focus', icon: Target },
     { name: 'Research Papers', href: '/papers', icon: FileText, count: activePapersCount },
@@ -231,9 +240,9 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
               <Trash2 className="w-4 h-4 text-[var(--text-muted)]" />
               <span>Trash Bin</span>
             </div>
-            {trashPages.length > 0 && (
+            {totalTrashCount > 0 && (
               <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-red-100 dark:bg-red-950 text-red-600 dark:text-red-400 font-semibold">
-                {trashPages.length}
+                {totalTrashCount}
               </span>
             )}
           </a>

@@ -27,8 +27,12 @@ import {
   RefreshCw,
   BookmarkCheck,
   Target,
-  FileText
+  FileText,
+  Compass,
+  Flag,
+  Footprints
 } from 'lucide-react';
+import { getDaysRemainingText } from './goals/page';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -40,7 +44,11 @@ export default function DashboardPage() {
     updatePage, 
     saveKnowledgeItem,
     focusSessions,
-    researchPapers 
+    researchPapers,
+    walkSessions,
+    learningSprints,
+    goals,
+    weeklyReviews
   } = usePlanner();
 
   const [isNewPageModalOpen, setIsNewPageModalOpen] = useState(false);
@@ -358,12 +366,74 @@ export default function DashboardPage() {
       </div>
 
       {/* Focus & Research Quick Intelligence Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {/* WEEKLY REVIEW COMPACT CARD */}
+        <div className="journal-paper p-5 border border-[var(--border-color)] flex flex-col justify-between space-y-3">
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+                <Compass className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span>Weekly Review</span>
+              </div>
+              <span className="text-[10px] text-[var(--text-muted)]">This Week</span>
+            </div>
+            <div className="text-sm font-bold font-serif-aesthetic text-[var(--text-primary)] leading-snug">
+              {(() => {
+                const now = new Date();
+                const day = now.getDay();
+                const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+                const mon = new Date(now.setDate(diff));
+                mon.setHours(0, 0, 0, 0);
+                const startMs = mon.getTime();
+                const endMs = startMs + 7 * 86400000 - 1;
+
+                const weekFocus = focusSessions.filter(s => {
+                  const t = new Date(s.started_at).getTime();
+                  return t >= startMs && t <= endMs;
+                });
+                const focusSec = weekFocus.reduce((sum, s) => sum + (s.actual_duration_seconds || 0), 0);
+                const focusH = Math.floor(focusSec / 3600);
+                const focusM = Math.round((focusSec % 3600) / 60);
+                const focusStr = focusH > 0 ? `${focusH}h ${focusM}m` : `${focusM}m`;
+
+                const weekSprints = (learningSprints || []).filter(s => {
+                  const t = new Date(s.created_at).getTime();
+                  return t >= startMs && t <= endMs;
+                });
+
+                const weekWalks = (walkSessions || []).filter(w => {
+                  const t = new Date(w.started_at || w.date).getTime();
+                  return t >= startMs && t <= endMs;
+                });
+                const activeWalkDays = new Set(weekWalks.map(w => w.date || w.started_at.split('T')[0])).size;
+
+                return (
+                  <div className="space-y-1 pt-0.5">
+                    <div className="text-base font-bold text-[var(--text-primary)]">
+                      {focusStr} focus • {weekSprints.length} sprints
+                    </div>
+                    <div className="text-[11px] text-[var(--text-secondary)] font-normal">
+                      {activeWalkDays} active walking days logged
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+
+          <button
+            onClick={() => router.push('/weekly-review')}
+            className="w-full py-1.5 px-3 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-semibold shadow-xs transition-all text-center"
+          >
+            Review My Week →
+          </button>
+        </div>
+
         {/* FOCUS TODAY */}
-        <div className="journal-paper p-5 border border-[var(--border-color)] flex items-center justify-between gap-4">
+        <div className="journal-paper p-5 border border-[var(--border-color)] flex flex-col justify-between space-y-3">
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              <Target className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <Target className="w-3.5 h-3.5 text-indigo-500" />
               <span>Focus Today</span>
             </div>
             <div className="text-xl font-bold font-serif-aesthetic text-[var(--text-primary)]">
@@ -383,17 +453,17 @@ export default function DashboardPage() {
 
           <button
             onClick={() => router.push('/focus')}
-            className="px-4 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-semibold shadow-xs shrink-0 transition-all hover:scale-[1.02] active:scale-98"
+            className="w-full py-1.5 px-3 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-semibold text-[var(--text-primary)] text-center transition-colors"
           >
-            Start Focus
+            Start Focus Session
           </button>
         </div>
 
         {/* RESEARCH */}
-        <div className="journal-paper p-5 border border-[var(--border-color)] flex items-center justify-between gap-4">
+        <div className="journal-paper p-5 border border-[var(--border-color)] flex flex-col justify-between space-y-3">
           <div className="space-y-1">
             <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-              <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <FileText className="w-3.5 h-3.5 text-rose-500" />
               <span>Research Library</span>
             </div>
             <div className="text-xl font-bold font-serif-aesthetic text-[var(--text-primary)]">
@@ -411,10 +481,86 @@ export default function DashboardPage() {
 
           <button
             onClick={() => router.push('/papers')}
-            className="px-4 py-2 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-semibold text-[var(--text-primary)] shrink-0 transition-colors"
+            className="w-full py-1.5 px-3 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-semibold text-[var(--text-primary)] text-center transition-colors"
           >
             Open Papers
           </button>
+        </div>
+      </div>
+
+      {/* ACTIVE GOALS SPOTLIGHT */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Flag className="w-4 h-4 text-[var(--accent)]" />
+            <h3 className="font-serif-aesthetic text-base font-bold text-[var(--text-primary)]">
+              Active Goals
+            </h3>
+          </div>
+          <button
+            onClick={() => router.push('/goals')}
+            className="text-xs text-[var(--accent)] hover:underline flex items-center gap-0.5 font-medium"
+          >
+            <span>View All Goals</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+          {(goals || [])
+            .filter(g => !g.is_trash && !g.is_archived && g.status !== 'completed')
+            .slice(0, 3)
+            .map(goal => {
+              const daysInfo = getDaysRemainingText(goal.target_date);
+              return (
+                <a
+                  key={goal.id}
+                  href={`/goals/${goal.id}`}
+                  className="journal-paper p-4 flex flex-col justify-between space-y-3 hover:border-[var(--border-strong)] transition-all group"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-strong)]">
+                        {goal.category}
+                      </span>
+                      <span className="text-xs font-bold text-[var(--accent)]">
+                        {goal.progress}%
+                      </span>
+                    </div>
+
+                    <h4 className="font-serif-aesthetic font-bold text-xs sm:text-sm text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors truncate pt-1">
+                      {goal.title}
+                    </h4>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="w-full h-1.5 rounded-full bg-[var(--bg-paper-subtle)] overflow-hidden border border-[var(--border-color)]">
+                      <div
+                        className="h-full bg-[var(--accent)] rounded-full transition-all"
+                        style={{ width: `${goal.progress}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-[var(--text-muted)]">
+                      <span>{daysInfo.text || 'In Progress'}</span>
+                      <span className="group-hover:underline text-[var(--accent)]">Open →</span>
+                    </div>
+                  </div>
+                </a>
+              );
+            })}
+
+          {(goals || []).filter(g => !g.is_trash && !g.is_archived && g.status !== 'completed').length === 0 && (
+            <div className="col-span-full journal-paper p-4 text-center text-xs text-[var(--text-muted)] flex items-center justify-between gap-4">
+              <span>No active goals currently in progress.</span>
+              <button
+                onClick={() => router.push('/goals')}
+                className="text-xs text-[var(--accent)] font-semibold hover:underline"
+              >
+                + Set a New Goal
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

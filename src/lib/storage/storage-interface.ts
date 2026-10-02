@@ -9,7 +9,11 @@ import {
   KnowledgeItem,
   VocabularyItem,
   FocusSession,
-  ResearchPaper
+  ResearchPaper,
+  WeeklyReview,
+  Goal,
+  GoalMilestone,
+  GoalTask
 } from '../types';
 
 export interface IPlannerStorage {
@@ -82,9 +86,34 @@ export interface IPlannerStorage {
   deleteResearchPaper(id: string, permanent?: boolean): Promise<void>;
   restoreResearchPaper(id: string): Promise<void>;
 
+  // Weekly Reviews
+  getWeeklyReviews(): Promise<WeeklyReview[]>;
+  getWeeklyReviewByWeek(weekStartDate: string): Promise<WeeklyReview | null>;
+  saveWeeklyReview(review: WeeklyReview): Promise<WeeklyReview>;
+  updateWeeklyReview(id: string, updates: Partial<WeeklyReview>): Promise<WeeklyReview>;
+  deleteWeeklyReview(id: string): Promise<void>;
+
+  // Goals, Milestones, and Tasks
+  getGoals(includeArchived?: boolean, includeTrash?: boolean): Promise<Goal[]>;
+  getGoalById(id: string): Promise<Goal | null>;
+  saveGoal(goal: Goal): Promise<Goal>;
+  updateGoal(id: string, updates: Partial<Goal>): Promise<Goal>;
+  deleteGoal(id: string, permanent?: boolean): Promise<void>;
+  restoreGoal(id: string): Promise<void>;
+  getMilestonesByGoalId(goalId: string): Promise<GoalMilestone[]>;
+  saveMilestone(milestone: GoalMilestone): Promise<GoalMilestone>;
+  updateMilestone(id: string, updates: Partial<GoalMilestone>): Promise<GoalMilestone>;
+  deleteMilestone(id: string): Promise<void>;
+  reorderMilestones(goalId: string, orderedMilestoneIds: string[]): Promise<void>;
+  getGoalTasks(goalId?: string, milestoneId?: string): Promise<GoalTask[]>;
+  saveGoalTask(task: GoalTask): Promise<GoalTask>;
+  updateGoalTask(id: string, updates: Partial<GoalTask>): Promise<GoalTask>;
+  deleteGoalTask(id: string): Promise<void>;
+
   // Backup & Restore
   exportData(): Promise<PlannerBackup>;
   importData(data: PlannerBackup): Promise<boolean>;
   resetToDefault(): Promise<void>;
 }
+
 

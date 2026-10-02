@@ -19,7 +19,11 @@ import {
   KnowledgeItem,
   VocabularyItem,
   FocusSession,
-  ResearchPaper
+  ResearchPaper,
+  WeeklyReview,
+  Goal,
+  GoalMilestone,
+  GoalTask
 } from '../types';
 import { DEFAULT_PROFILE } from './seed-data';
 
@@ -28,7 +32,7 @@ interface SearchResult {
   pageId?: string;
   pageTitle: string;
   pageIcon: string;
-  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary' | 'paper' | 'focus';
+  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary' | 'paper' | 'focus' | 'review' | 'goal' | 'milestone';
   title: string;
   subtitle?: string;
   url?: string;
@@ -47,11 +51,18 @@ interface StorageContextType {
   vocabularyItems: VocabularyItem[];
   focusSessions: FocusSession[];
   researchPapers: ResearchPaper[];
+  weeklyReviews: WeeklyReview[];
+  goals: Goal[];
+  trashGoals: Goal[];
+  goalMilestones: GoalMilestone[];
+  goalTasks: GoalTask[];
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   walkSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   learningSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   focusSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   paperSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  reviewSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  goalSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   isLocked: boolean;
   isReady: boolean;
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -61,6 +72,8 @@ interface StorageContextType {
   refreshLearningData: () => Promise<void>;
   refreshFocusData: () => Promise<void>;
   refreshPapersData: () => Promise<void>;
+  refreshWeeklyReviews: () => Promise<void>;
+  refreshGoalsData: () => Promise<void>;
   saveWalkSession: (session: WalkSession) => Promise<WalkSession>;
   updateWalkSession: (id: string, updates: Partial<WalkSession>) => Promise<WalkSession>;
   deleteWalkSession: (id: string) => Promise<void>;
@@ -79,6 +92,20 @@ interface StorageContextType {
   updateResearchPaper: (id: string, updates: Partial<ResearchPaper>) => Promise<ResearchPaper>;
   deleteResearchPaper: (id: string, permanent?: boolean) => Promise<void>;
   restoreResearchPaper: (id: string) => Promise<void>;
+  saveWeeklyReview: (review: WeeklyReview) => Promise<WeeklyReview>;
+  updateWeeklyReview: (id: string, updates: Partial<WeeklyReview>) => Promise<WeeklyReview>;
+  deleteWeeklyReview: (id: string) => Promise<void>;
+  saveGoal: (goal: Goal) => Promise<Goal>;
+  updateGoal: (id: string, updates: Partial<Goal>) => Promise<Goal>;
+  deleteGoal: (id: string, permanent?: boolean) => Promise<void>;
+  restoreGoal: (id: string) => Promise<void>;
+  saveMilestone: (milestone: GoalMilestone) => Promise<GoalMilestone>;
+  updateMilestone: (id: string, updates: Partial<GoalMilestone>) => Promise<GoalMilestone>;
+  deleteMilestone: (id: string) => Promise<void>;
+  reorderMilestones: (goalId: string, orderedMilestoneIds: string[]) => Promise<void>;
+  saveGoalTask: (task: GoalTask) => Promise<GoalTask>;
+  updateGoalTask: (id: string, updates: Partial<GoalTask>) => Promise<GoalTask>;
+  deleteGoalTask: (id: string) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   createPage: (params: {
     title: string;
@@ -202,11 +229,69 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     return [];
   });
 
+  const [weeklyReviews, setWeeklyReviews] = useState<WeeklyReview[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_weekly_reviews');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
+  const [goals, setGoals] = useState<Goal[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_goals');
+        if (cached) {
+          const parsed: Goal[] = JSON.parse(cached);
+          return parsed.filter(g => !g.is_trash);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [trashGoals, setTrashGoals] = useState<Goal[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_goals');
+        if (cached) {
+          const parsed: Goal[] = JSON.parse(cached);
+          return parsed.filter(g => g.is_trash);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [goalMilestones, setGoalMilestones] = useState<GoalMilestone[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_goal_milestones');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
+  const [goalTasks, setGoalTasks] = useState<GoalTask[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_goal_tasks');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [walkSaveStatus, setWalkSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [learningSaveStatus, setLearningSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [focusSaveStatus, setFocusSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [paperSaveStatus, setPaperSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [reviewSaveStatus, setReviewSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [goalSaveStatus, setGoalSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [isLocked, setIsLocked] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -240,8 +325,12 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         storage.getPages(false, false),
         storage.getPages(true, true),
       ]);
-      setPages(active);
-      setTrashPages(trash);
+      setPages(active.filter(p => !p.is_deleted));
+      setTrashPages(trash.filter(p => p.is_deleted));
+      if (typeof window !== 'undefined') {
+        const nonDeleted = active.filter(p => !p.is_deleted);
+        localStorage.setItem('planora_planner_pages', JSON.stringify(nonDeleted));
+      }
     } catch (e) {
       console.error('Failed to load pages', e);
     }
@@ -303,6 +392,47 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     }
   }, [storage]);
 
+  const refreshWeeklyReviews = useCallback(async () => {
+    try {
+      const list = await storage.getWeeklyReviews();
+      setWeeklyReviews(list);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_weekly_reviews', JSON.stringify(list));
+      }
+    } catch (e) {
+      console.error('Failed to load weekly reviews', e);
+    }
+  }, [storage]);
+
+  const refreshGoalsData = useCallback(async () => {
+    try {
+      const [activeGoals, trashList] = await Promise.all([
+        storage.getGoals(true, false),
+        storage.getGoals(true, true),
+      ]);
+      setGoals(activeGoals.filter(g => !g.is_trash));
+      setTrashGoals(trashList.filter(g => g.is_trash));
+
+      const allMilestones: GoalMilestone[] = [];
+      for (const g of activeGoals) {
+        const ms = await storage.getMilestonesByGoalId(g.id);
+        allMilestones.push(...ms);
+      }
+      setGoalMilestones(allMilestones);
+
+      const tasks = await storage.getGoalTasks();
+      setGoalTasks(tasks);
+
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_goals', JSON.stringify(activeGoals));
+        localStorage.setItem('planora_goal_milestones', JSON.stringify(allMilestones));
+        localStorage.setItem('planora_goal_tasks', JSON.stringify(tasks));
+      }
+    } catch (e) {
+      console.error('Failed to load goals data', e);
+    }
+  }, [storage]);
+
   useEffect(() => {
     let mounted = true;
     async function init() {
@@ -313,7 +443,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         refreshWalkSessions(), 
         refreshLearningData(),
         refreshFocusData(),
-        refreshPapersData()
+        refreshPapersData(),
+        refreshWeeklyReviews(),
+        refreshGoalsData()
       ]);
       if (mounted) {
         setIsReady(true);
@@ -326,6 +458,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       refreshLearningData();
       refreshFocusData();
       refreshPapersData();
+      refreshWeeklyReviews();
+      refreshGoalsData();
     };
     if (typeof window !== 'undefined') {
       window.addEventListener('online', handleOnline);
@@ -337,7 +471,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         window.removeEventListener('online', handleOnline);
       }
     };
-  }, [refreshProfile, refreshPages, refreshWalkSessions, refreshLearningData, refreshFocusData, refreshPapersData]);
+  }, [refreshProfile, refreshPages, refreshWalkSessions, refreshLearningData, refreshFocusData, refreshPapersData, refreshWeeklyReviews, refreshGoalsData]);
 
   const saveWalkSession = async (session: WalkSession): Promise<WalkSession> => {
     setWalkSaveStatus('saving');
@@ -649,6 +783,230 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Weekly Review Actions
+  const saveWeeklyReview = async (review: WeeklyReview): Promise<WeeklyReview> => {
+    setReviewSaveStatus('saving');
+    try {
+      const saved = await storage.saveWeeklyReview(review);
+      setWeeklyReviews((prev) => [saved, ...prev.filter((r) => r.id !== saved.id && r.week_start_date !== saved.week_start_date)]);
+      setReviewSaveStatus('saved');
+      setTimeout(() => setReviewSaveStatus('idle'), 3000);
+      return saved;
+    } catch (e) {
+      console.error('Save weekly review error:', e);
+      setWeeklyReviews((prev) => [review, ...prev.filter((r) => r.id !== review.id)]);
+      setReviewSaveStatus('unsynced');
+      throw e;
+    }
+  };
+
+  const updateWeeklyReview = async (id: string, updates: Partial<WeeklyReview>): Promise<WeeklyReview> => {
+    setReviewSaveStatus('saving');
+    try {
+      const updated = await storage.updateWeeklyReview(id, updates);
+      setWeeklyReviews((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      setReviewSaveStatus('saved');
+      setTimeout(() => setReviewSaveStatus('idle'), 2500);
+      return updated;
+    } catch (e) {
+      console.error('Update weekly review error:', e);
+      setReviewSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteWeeklyReview = async (id: string): Promise<void> => {
+    setReviewSaveStatus('saving');
+    try {
+      await storage.deleteWeeklyReview(id);
+      setWeeklyReviews((prev) => prev.filter((r) => r.id !== id));
+      setReviewSaveStatus('saved');
+      setTimeout(() => setReviewSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Delete weekly review error:', e);
+      setReviewSaveStatus('error');
+      throw e;
+    }
+  };
+
+  // Goals Actions
+  const saveGoal = async (goal: Goal): Promise<Goal> => {
+    setGoalSaveStatus('saving');
+    try {
+      const saved = await storage.saveGoal(goal);
+      setGoals((prev) => [saved, ...prev.filter((g) => g.id !== saved.id)]);
+      setGoalSaveStatus('saved');
+      setTimeout(() => setGoalSaveStatus('idle'), 3000);
+      return saved;
+    } catch (e) {
+      console.error('Save goal error:', e);
+      setGoals((prev) => [goal, ...prev.filter((g) => g.id !== goal.id)]);
+      setGoalSaveStatus('unsynced');
+      throw e;
+    }
+  };
+
+  const updateGoal = async (id: string, updates: Partial<Goal>): Promise<Goal> => {
+    setGoalSaveStatus('saving');
+    try {
+      const updated = await storage.updateGoal(id, updates);
+      setGoals((prev) => prev.map((g) => (g.id === id ? updated : g)));
+      setGoalSaveStatus('saved');
+      setTimeout(() => setGoalSaveStatus('idle'), 2500);
+      return updated;
+    } catch (e) {
+      console.error('Update goal error:', e);
+      setGoalSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteGoal = async (id: string, permanent: boolean = false): Promise<void> => {
+    setGoalSaveStatus('saving');
+    const targetGoal = goals.find(g => g.id === id);
+    if (permanent) {
+      setGoals((prev) => prev.filter((g) => g.id !== id));
+      setTrashGoals((prev) => prev.filter((g) => g.id !== id));
+      setGoalMilestones((prev) => prev.filter((m) => m.goal_id !== id));
+      setGoalTasks((prev) => prev.filter((t) => t.goal_id !== id));
+    } else if (targetGoal) {
+      const trashed = { ...targetGoal, is_trash: true, updated_at: new Date().toISOString() };
+      setGoals((prev) => prev.filter((g) => g.id !== id));
+      setTrashGoals((prev) => [trashed, ...prev.filter((g) => g.id !== id)]);
+    }
+    try {
+      await storage.deleteGoal(id, permanent);
+      setGoalSaveStatus('saved');
+      setTimeout(() => setGoalSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Delete goal error:', e);
+      await refreshGoalsData();
+      setGoalSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const restoreGoal = async (id: string): Promise<void> => {
+    setGoalSaveStatus('saving');
+    const targetGoal = trashGoals.find(g => g.id === id);
+    if (targetGoal) {
+      const restored = { ...targetGoal, is_trash: false, is_archived: false, updated_at: new Date().toISOString() };
+      setTrashGoals((prev) => prev.filter((g) => g.id !== id));
+      setGoals((prev) => [restored, ...prev.filter((g) => g.id !== id)]);
+    }
+    try {
+      await storage.restoreGoal(id);
+      setGoalSaveStatus('saved');
+      setTimeout(() => setGoalSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Restore goal error:', e);
+      await refreshGoalsData();
+      setGoalSaveStatus('error');
+      throw e;
+    }
+  };
+
+  // Milestone Actions
+  const saveMilestone = async (milestone: GoalMilestone): Promise<GoalMilestone> => {
+    try {
+      const saved = await storage.saveMilestone(milestone);
+      setGoalMilestones((prev) => {
+        const idx = prev.findIndex(m => m.id === saved.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        }
+        return [...prev, saved];
+      });
+      return saved;
+    } catch (e) {
+      console.error('Save milestone error:', e);
+      throw e;
+    }
+  };
+
+  const updateMilestone = async (id: string, updates: Partial<GoalMilestone>): Promise<GoalMilestone> => {
+    try {
+      const updated = await storage.updateMilestone(id, updates);
+      setGoalMilestones((prev) => prev.map(m => m.id === id ? updated : m));
+      return updated;
+    } catch (e) {
+      console.error('Update milestone error:', e);
+      throw e;
+    }
+  };
+
+  const deleteMilestone = async (id: string): Promise<void> => {
+    try {
+      await storage.deleteMilestone(id);
+      setGoalMilestones((prev) => prev.filter(m => m.id !== id));
+      setGoalTasks((prev) => prev.filter(t => t.milestone_id !== id));
+    } catch (e) {
+      console.error('Delete milestone error:', e);
+      throw e;
+    }
+  };
+
+  const reorderMilestones = async (goalId: string, orderedMilestoneIds: string[]): Promise<void> => {
+    try {
+      await storage.reorderMilestones(goalId, orderedMilestoneIds);
+      setGoalMilestones((prev) =>
+        prev.map(m => {
+          if (m.goal_id === goalId) {
+            const newPos = orderedMilestoneIds.indexOf(m.id);
+            if (newPos >= 0) return { ...m, position: newPos };
+          }
+          return m;
+        }).sort((a, b) => a.position - b.position)
+      );
+    } catch (e) {
+      console.error('Reorder milestones error:', e);
+      throw e;
+    }
+  };
+
+  // Goal Task Actions
+  const saveGoalTask = async (task: GoalTask): Promise<GoalTask> => {
+    try {
+      const saved = await storage.saveGoalTask(task);
+      setGoalTasks((prev) => {
+        const idx = prev.findIndex(t => t.id === saved.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        }
+        return [...prev, saved];
+      });
+      return saved;
+    } catch (e) {
+      console.error('Save goal task error:', e);
+      throw e;
+    }
+  };
+
+  const updateGoalTask = async (id: string, updates: Partial<GoalTask>): Promise<GoalTask> => {
+    try {
+      const updated = await storage.updateGoalTask(id, updates);
+      setGoalTasks((prev) => prev.map(t => t.id === id ? updated : t));
+      return updated;
+    } catch (e) {
+      console.error('Update goal task error:', e);
+      throw e;
+    }
+  };
+
+  const deleteGoalTask = async (id: string): Promise<void> => {
+    try {
+      await storage.deleteGoalTask(id);
+      setGoalTasks((prev) => prev.filter(t => t.id !== id));
+    } catch (e) {
+      console.error('Delete goal task error:', e);
+      throw e;
+    }
+  };
+
   const updateProfile = async (updates: Partial<UserProfile>) => {
     setSaveStatus('saving');
     try {
@@ -718,6 +1076,13 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
 
   const moveToTrash = async (id: string) => {
     setSaveStatus('saving');
+    // Immediate optimistic update for zero delay
+    const targetPage = pages.find(p => p.id === id);
+    if (targetPage) {
+      const trashed = { ...targetPage, is_deleted: true, deleted_at: new Date().toISOString() };
+      setPages(prev => prev.filter(p => p.id !== id));
+      setTrashPages(prev => [trashed, ...prev.filter(p => p.id !== id)]);
+    }
     try {
       await storage.moveToTrash(id);
       await refreshPages();
@@ -725,12 +1090,19 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (e) {
       setSaveStatus('error');
+      await refreshPages();
       throw e;
     }
   };
 
   const restoreFromTrash = async (id: string) => {
     setSaveStatus('saving');
+    const targetPage = trashPages.find(p => p.id === id);
+    if (targetPage) {
+      const restored = { ...targetPage, is_deleted: false, deleted_at: undefined };
+      setTrashPages(prev => prev.filter(p => p.id !== id));
+      setPages(prev => [restored, ...prev.filter(p => p.id !== id)]);
+    }
     try {
       await storage.restoreFromTrash(id);
       await refreshPages();
@@ -738,12 +1110,15 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (e) {
       setSaveStatus('error');
+      await refreshPages();
       throw e;
     }
   };
 
   const permanentlyDeletePage = async (id: string) => {
     setSaveStatus('saving');
+    setTrashPages(prev => prev.filter(p => p.id !== id));
+    setPages(prev => prev.filter(p => p.id !== id));
     try {
       await storage.permanentlyDeletePage(id);
       await refreshPages();
@@ -751,12 +1126,14 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (e) {
       setSaveStatus('error');
+      await refreshPages();
       throw e;
     }
   };
 
   const emptyTrash = async () => {
     setSaveStatus('saving');
+    setTrashPages([]);
     try {
       await storage.emptyTrash();
       await refreshPages();
@@ -764,6 +1141,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       setTimeout(() => setSaveStatus('idle'), 2000);
     } catch (e) {
       setSaveStatus('error');
+      await refreshPages();
       throw e;
     }
   };
@@ -781,7 +1159,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     setIsLocked(true);
   };
 
-  // Search across pages, blocks, checklist items, habits, study sessions
+  // Search across pages, blocks, checklist items, habits, study sessions, goals, milestones, reviews
   const searchAll = async (query: string): Promise<SearchResult[]> => {
     if (!query || !query.trim()) return [];
     const q = query.toLowerCase().trim();
@@ -938,6 +1316,66 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // Search Goals (Non-trashed)
+    for (const g of goals) {
+      if (g.is_trash) continue;
+      const matchTitle = g.title.toLowerCase().includes(q);
+      const matchDesc = (g.description || '').toLowerCase().includes(q);
+      const matchCat = g.category.toLowerCase().includes(q);
+      const matchWhy = (g.why_it_matters || '').toLowerCase().includes(q);
+      const matchNotes = (g.notes || '').toLowerCase().includes(q);
+
+      if (matchTitle || matchDesc || matchCat || matchWhy || matchNotes) {
+        results.push({
+          id: `goal-${g.id}`,
+          pageTitle: g.title,
+          pageIcon: '🎯',
+          type: 'goal',
+          title: g.title,
+          subtitle: `Goal • ${g.category} (${g.progress}% completed)`,
+          url: `/goals/${g.id}`,
+        });
+      }
+    }
+
+    // Search Milestones
+    for (const m of goalMilestones) {
+      const parentGoal = goals.find(g => g.id === m.goal_id);
+      if (!parentGoal || parentGoal.is_trash) continue;
+
+      if (m.title.toLowerCase().includes(q) || (m.description || '').toLowerCase().includes(q)) {
+        results.push({
+          id: `milestone-${m.id}`,
+          pageTitle: parentGoal.title,
+          pageIcon: '🚩',
+          type: 'milestone',
+          title: m.title,
+          subtitle: `Milestone in ${parentGoal.title} (${m.status})`,
+          url: `/goals/${parentGoal.id}`,
+        });
+      }
+    }
+
+    // Search Weekly Reviews
+    for (const wr of weeklyReviews) {
+      const reviewTitle = wr.title || `Weekly Review (${wr.week_start_date} – ${wr.week_end_date})`;
+      const matchTitle = reviewTitle.toLowerCase().includes(q);
+      const matchReflection = Object.values(wr.reflection || {}).some(val => typeof val === 'string' && val.toLowerCase().includes(q));
+      const matchNextWeek = Object.values(wr.next_week || {}).some(val => typeof val === 'string' && val.toLowerCase().includes(q));
+
+      if (matchTitle || matchReflection || matchNextWeek) {
+        results.push({
+          id: `review-${wr.id}`,
+          pageTitle: reviewTitle,
+          pageIcon: '🧭',
+          type: 'review',
+          title: reviewTitle,
+          subtitle: `Weekly Review (${wr.week_start_date} – ${wr.week_end_date})`,
+          url: `/weekly-review?week=${wr.week_start_date}`,
+        });
+      }
+    }
+
     return results;
   };
 
@@ -959,11 +1397,18 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         vocabularyItems,
         focusSessions,
         researchPapers,
+        weeklyReviews,
+        goals,
+        trashGoals,
+        goalMilestones,
+        goalTasks,
         saveStatus,
         walkSaveStatus,
         learningSaveStatus,
         focusSaveStatus,
         paperSaveStatus,
+        reviewSaveStatus,
+        goalSaveStatus,
         isLocked,
         isReady,
         setSaveStatus,
@@ -973,6 +1418,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         refreshLearningData,
         refreshFocusData,
         refreshPapersData,
+        refreshWeeklyReviews,
+        refreshGoalsData,
         saveWalkSession,
         updateWalkSession,
         deleteWalkSession,
@@ -991,6 +1438,20 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         updateResearchPaper,
         deleteResearchPaper,
         restoreResearchPaper,
+        saveWeeklyReview,
+        updateWeeklyReview,
+        deleteWeeklyReview,
+        saveGoal,
+        updateGoal,
+        deleteGoal,
+        restoreGoal,
+        saveMilestone,
+        updateMilestone,
+        deleteMilestone,
+        reorderMilestones,
+        saveGoalTask,
+        updateGoalTask,
+        deleteGoalTask,
         updateProfile,
         createPage,
         updatePage,
@@ -1016,3 +1477,4 @@ export function usePlanner() {
   }
   return context;
 }
+

@@ -373,7 +373,167 @@ create index if not exists idx_focus_sessions_category on public.focus_sessions(
 create index if not exists idx_focus_sessions_started_at on public.focus_sessions(started_at);
 create index if not exists idx_focus_sessions_related_paper_id on public.focus_sessions(related_paper_id);
 
--- 10. PROFILE AUTO-TRIGGER ON SIGNUP
+-- 10. WEEKLY REVIEWS TABLE
+create table if not exists public.weekly_reviews (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  week_start_date text not null,
+  week_end_date text not null,
+  title text not null default '',
+  status text not null default 'draft', -- draft, completed
+  rating_overall integer default 0,
+  rating_energy text default 'medium',
+  rating_productivity integer default 0,
+  rating_stress integer default 0,
+  reflection jsonb default '{}'::jsonb,
+  next_week jsonb default '{}'::jsonb,
+  stats_snapshot jsonb default '{}'::jsonb,
+  notes text default '',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.weekly_reviews enable row level security;
+
+create policy "Users can view their own weekly reviews"
+  on public.weekly_reviews for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own weekly reviews"
+  on public.weekly_reviews for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own weekly reviews"
+  on public.weekly_reviews for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own weekly reviews"
+  on public.weekly_reviews for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_weekly_reviews_user_id on public.weekly_reviews(user_id);
+create index if not exists idx_weekly_reviews_week_start on public.weekly_reviews(week_start_date);
+create index if not exists idx_weekly_reviews_status on public.weekly_reviews(status);
+
+-- 11. GOALS TABLE
+create table if not exists public.goals (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  title text not null,
+  description text default '',
+  category text not null default 'Personal',
+  priority text not null default 'medium',
+  status text not null default 'not_started',
+  start_date text,
+  target_date text,
+  why_it_matters text default '',
+  progress integer not null default 0,
+  is_favorite boolean default false,
+  is_archived boolean default false,
+  is_trash boolean default false,
+  notes text default '',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.goals enable row level security;
+
+create policy "Users can view their own goals"
+  on public.goals for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own goals"
+  on public.goals for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own goals"
+  on public.goals for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own goals"
+  on public.goals for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_goals_user_id on public.goals(user_id);
+create index if not exists idx_goals_status on public.goals(status);
+create index if not exists idx_goals_category on public.goals(category);
+create index if not exists idx_goals_is_trash on public.goals(is_trash);
+
+-- 12. GOAL MILESTONES TABLE
+create table if not exists public.goal_milestones (
+  id text primary key,
+  goal_id text references public.goals(id) on delete cascade,
+  user_id uuid references auth.users on delete cascade,
+  title text not null,
+  description text default '',
+  target_date text,
+  status text not null default 'pending', -- pending, in_progress, completed
+  position integer not null default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.goal_milestones enable row level security;
+
+create policy "Users can view their own goal milestones"
+  on public.goal_milestones for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own goal milestones"
+  on public.goal_milestones for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own goal milestones"
+  on public.goal_milestones for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own goal milestones"
+  on public.goal_milestones for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_goal_milestones_goal_id on public.goal_milestones(goal_id);
+create index if not exists idx_goal_milestones_user_id on public.goal_milestones(user_id);
+
+-- 13. GOAL TASKS TABLE
+create table if not exists public.goal_tasks (
+  id text primary key,
+  goal_id text references public.goals(id) on delete cascade,
+  milestone_id text references public.goal_milestones(id) on delete set null,
+  user_id uuid references auth.users on delete cascade,
+  title text not null,
+  is_completed boolean not null default false,
+  due_date text,
+  priority text default 'medium',
+  notes text default '',
+  position integer not null default 0,
+  daily_planner_date text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.goal_tasks enable row level security;
+
+create policy "Users can view their own goal tasks"
+  on public.goal_tasks for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own goal tasks"
+  on public.goal_tasks for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own goal tasks"
+  on public.goal_tasks for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own goal tasks"
+  on public.goal_tasks for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_goal_tasks_goal_id on public.goal_tasks(goal_id);
+create index if not exists idx_goal_tasks_milestone_id on public.goal_tasks(milestone_id);
+create index if not exists idx_goal_tasks_user_id on public.goal_tasks(user_id);
+
+-- 14. PROFILE AUTO-TRIGGER ON SIGNUP
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin

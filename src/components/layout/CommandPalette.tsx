@@ -22,7 +22,9 @@ import {
   Lightbulb,
   Footprints,
   Plus,
-  Target
+  Target,
+  Compass,
+  Flag
 } from 'lucide-react';
 
 interface CommandPaletteProps {
@@ -79,6 +81,10 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
       router.push('/papers');
     } else if (r.type === 'focus') {
       router.push('/focus');
+    } else if (r.type === 'goal') {
+      router.push(`/goals/${r.id.replace('goal-', '')}`);
+    } else if (r.type === 'review') {
+      router.push('/weekly-review');
     } else {
       router.push(`/pages/${r.pageId}`);
     }
@@ -170,6 +176,20 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
               Quick Actions
             </div>
             <div className="space-y-1 mt-1">
+              <button
+                onClick={() => handleAction(() => router.push('/weekly-review'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Compass className="w-4 h-4 text-[var(--accent)]" />
+                <span>Open Weekly Review & Planning</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/goals'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Flag className="w-4 h-4 text-[var(--accent)]" />
+                <span>Open Goals & Milestones</span>
+              </button>
               <button
                 onClick={() => handleAction(() => router.push('/focus'))}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"

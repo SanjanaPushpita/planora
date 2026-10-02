@@ -10,7 +10,11 @@ import {
   KnowledgeItem,
   VocabularyItem,
   FocusSession,
-  ResearchPaper
+  ResearchPaper,
+  WeeklyReview,
+  Goal,
+  GoalMilestone,
+  GoalTask
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../../supabase/client';
 import { localPlannerStorage } from './local-storage';
@@ -190,28 +194,64 @@ export class SupabasePlannerStorage implements IPlannerStorage {
   }
 
   async moveToTrash(id: string): Promise<void> {
-    if (!isSupabaseConfigured || !supabase) return this.fallback.moveToTrash(id);
-    await supabase.from('pages').update({ is_deleted: true, deleted_at: new Date().toISOString() }).eq('id', id);
+    await this.fallback.moveToTrash(id);
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase
+        .from('pages')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id);
+    } catch (e) {
+      console.error('Error in moveToTrash:', e);
+    }
   }
 
   async restoreFromTrash(id: string): Promise<void> {
-    if (!isSupabaseConfigured || !supabase) return this.fallback.restoreFromTrash(id);
-    await supabase.from('pages').update({ is_deleted: false, deleted_at: null }).eq('id', id);
+    await this.fallback.restoreFromTrash(id);
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase
+        .from('pages')
+        .update({ is_deleted: false, deleted_at: null, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id);
+    } catch (e) {
+      console.error('Error in restoreFromTrash:', e);
+    }
   }
 
   async permanentlyDeletePage(id: string): Promise<void> {
-    if (!isSupabaseConfigured || !supabase) return this.fallback.permanentlyDeletePage(id);
-    await supabase.from('page_blocks').delete().eq('page_id', id);
-    await supabase.from('pages').delete().eq('id', id);
+    await this.fallback.permanentlyDeletePage(id);
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      await supabase.from('page_blocks').delete().eq('page_id', id);
+      await supabase.from('pages').delete().eq('id', id).eq('user_id', user.id);
+    } catch (e) {
+      console.error('Error in permanentlyDeletePage:', e);
+    }
   }
 
   async emptyTrash(): Promise<void> {
-    if (!isSupabaseConfigured || !supabase) return this.fallback.emptyTrash();
-    const { data } = await supabase.from('pages').select('id').eq('is_deleted', true);
-    if (data && data.length > 0) {
-      const ids = data.map(p => p.id);
-      await supabase.from('page_blocks').delete().in('page_id', ids);
-      await supabase.from('pages').delete().in('id', ids);
+    await this.fallback.emptyTrash();
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      const { data } = await supabase.from('pages').select('id').eq('is_deleted', true).eq('user_id', user.id);
+      if (data && data.length > 0) {
+        const ids = data.map(p => p.id);
+        await supabase.from('page_blocks').delete().in('page_id', ids);
+        await supabase.from('pages').delete().in('id', ids).eq('user_id', user.id);
+      }
+    } catch (e) {
+      console.error('Error in emptyTrash:', e);
     }
   }
 
@@ -1200,6 +1240,677 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       if (error) console.error('[Supabase restoreResearchPaper error]', error);
     } catch (err) {
       console.error('[Supabase restoreResearchPaper catch]', err);
+    }
+  }
+
+  // Weekly Reviews
+  async getWeeklyReviews(): Promise<WeeklyReview[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getWeeklyReviews();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getWeeklyReviews();
+
+      const { data, error } = await supabase
+        .from('weekly_reviews')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('week_start_date', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getWeeklyReviews error, using fallback]', error);
+        return this.fallback.getWeeklyReviews();
+      }
+
+      if (Array.isArray(data)) {
+        for (const r of data) {
+          await this.fallback.saveWeeklyReview(r);
+        }
+      }
+
+      return data as WeeklyReview[];
+    } catch (err) {
+      console.error('[Supabase getWeeklyReviews exception]', err);
+      return this.fallback.getWeeklyReviews();
+    }
+  }
+
+  async getWeeklyReviewByWeek(weekStartDate: string): Promise<WeeklyReview | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getWeeklyReviewByWeek(weekStartDate);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getWeeklyReviewByWeek(weekStartDate);
+
+      const { data, error } = await supabase
+        .from('weekly_reviews')
+        .select('*')
+        .eq('week_start_date', weekStartDate)
+        .eq('user_id', user.id)
+        .maybeSingle();
+
+      if (error || !data) {
+        return this.fallback.getWeeklyReviewByWeek(weekStartDate);
+      }
+
+      await this.fallback.saveWeeklyReview(data);
+      return data as WeeklyReview;
+    } catch (err) {
+      console.error('[Supabase getWeeklyReviewByWeek exception]', err);
+      return this.fallback.getWeeklyReviewByWeek(weekStartDate);
+    }
+  }
+
+  async saveWeeklyReview(review: WeeklyReview): Promise<WeeklyReview> {
+    const localSaved = await this.fallback.saveWeeklyReview(review);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: review.id,
+        user_id: user.id,
+        week_start_date: review.week_start_date,
+        week_end_date: review.week_end_date,
+        title: review.title || `Weekly Review (${review.week_start_date} – ${review.week_end_date})`,
+        status: review.status || 'draft',
+        rating_overall: review.rating_overall || 0,
+        rating_energy: review.rating_energy || 'medium',
+        rating_productivity: review.rating_productivity || 0,
+        rating_stress: review.rating_stress || 0,
+        reflection: review.reflection || {},
+        next_week: review.next_week || {},
+        stats_snapshot: review.stats_snapshot || {},
+        notes: review.notes || '',
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('weekly_reviews')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveWeeklyReview error]', error);
+        return localSaved;
+      }
+
+      return (data as WeeklyReview) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveWeeklyReview catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateWeeklyReview(id: string, updates: Partial<WeeklyReview>): Promise<WeeklyReview> {
+    const localUpdated = await this.fallback.updateWeeklyReview(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('weekly_reviews')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateWeeklyReview error]', error);
+        return localUpdated;
+      }
+
+      return data as WeeklyReview;
+    } catch (err) {
+      console.error('[Supabase updateWeeklyReview catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteWeeklyReview(id: string): Promise<void> {
+    await this.fallback.deleteWeeklyReview(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('weekly_reviews')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('[Supabase deleteWeeklyReview error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteWeeklyReview catch]', err);
+    }
+  }
+
+  // Goals
+  async getGoals(includeArchived: boolean = true, includeTrash: boolean = false): Promise<Goal[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getGoals(includeArchived, includeTrash);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getGoals(includeArchived, includeTrash);
+
+      let query = supabase
+        .from('goals')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (!includeTrash) {
+        query = query.eq('is_trash', false);
+      }
+      if (!includeArchived) {
+        query = query.eq('is_archived', false);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getGoals error, using fallback]', error);
+        return this.fallback.getGoals(includeArchived, includeTrash);
+      }
+
+      if (Array.isArray(data)) {
+        for (const g of data) {
+          await this.fallback.saveGoal(g);
+        }
+      }
+
+      return data as Goal[];
+    } catch (err) {
+      console.error('[Supabase getGoals exception]', err);
+      return this.fallback.getGoals(includeArchived, includeTrash);
+    }
+  }
+
+  async getGoalById(id: string): Promise<Goal | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getGoalById(id);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getGoalById(id);
+
+      const { data, error } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        return this.fallback.getGoalById(id);
+      }
+
+      await this.fallback.saveGoal(data);
+      return data as Goal;
+    } catch (err) {
+      console.error('[Supabase getGoalById exception]', err);
+      return this.fallback.getGoalById(id);
+    }
+  }
+
+  async saveGoal(goal: Goal): Promise<Goal> {
+    const localSaved = await this.fallback.saveGoal(goal);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: goal.id,
+        user_id: user.id,
+        title: goal.title,
+        description: goal.description || '',
+        category: goal.category || 'Personal',
+        priority: goal.priority || 'medium',
+        status: goal.status || 'not_started',
+        start_date: goal.start_date || null,
+        target_date: goal.target_date || null,
+        why_it_matters: goal.why_it_matters || '',
+        progress: typeof goal.progress === 'number' ? goal.progress : 0,
+        is_favorite: Boolean(goal.is_favorite),
+        is_archived: Boolean(goal.is_archived),
+        is_trash: Boolean(goal.is_trash),
+        notes: goal.notes || '',
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('goals')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveGoal error]', error);
+        return localSaved;
+      }
+
+      return (data as Goal) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveGoal catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateGoal(id: string, updates: Partial<Goal>): Promise<Goal> {
+    const localUpdated = await this.fallback.updateGoal(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('goals')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateGoal error]', error);
+        return localUpdated;
+      }
+
+      return data as Goal;
+    } catch (err) {
+      console.error('[Supabase updateGoal catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteGoal(id: string, permanent: boolean = false): Promise<void> {
+    await this.fallback.deleteGoal(id, permanent);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      if (permanent) {
+        const { error } = await supabase
+          .from('goals')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase permanent deleteGoal error]', error);
+      } else {
+        const { error } = await supabase
+          .from('goals')
+          .update({ is_trash: true, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase trash deleteGoal error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteGoal catch]', err);
+    }
+  }
+
+  async restoreGoal(id: string): Promise<void> {
+    await this.fallback.restoreGoal(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('goals')
+        .update({ is_trash: false, is_archived: false, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase restoreGoal error]', error);
+    } catch (err) {
+      console.error('[Supabase restoreGoal catch]', err);
+    }
+  }
+
+  // Milestones
+  async getMilestonesByGoalId(goalId: string): Promise<GoalMilestone[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getMilestonesByGoalId(goalId);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getMilestonesByGoalId(goalId);
+
+      const { data, error } = await supabase
+        .from('goal_milestones')
+        .select('*')
+        .eq('goal_id', goalId)
+        .eq('user_id', user.id)
+        .order('position', { ascending: true });
+
+      if (error || !data) {
+        console.warn('[Supabase getMilestonesByGoalId error, using fallback]', error);
+        return this.fallback.getMilestonesByGoalId(goalId);
+      }
+
+      if (Array.isArray(data)) {
+        for (const m of data) {
+          await this.fallback.saveMilestone(m);
+        }
+      }
+
+      return data as GoalMilestone[];
+    } catch (err) {
+      console.error('[Supabase getMilestonesByGoalId exception]', err);
+      return this.fallback.getMilestonesByGoalId(goalId);
+    }
+  }
+
+  async saveMilestone(milestone: GoalMilestone): Promise<GoalMilestone> {
+    const localSaved = await this.fallback.saveMilestone(milestone);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: milestone.id,
+        goal_id: milestone.goal_id,
+        user_id: user.id,
+        title: milestone.title,
+        description: milestone.description || '',
+        target_date: milestone.target_date || null,
+        status: milestone.status || 'pending',
+        position: typeof milestone.position === 'number' ? milestone.position : 0,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('goal_milestones')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveMilestone error]', error);
+        return localSaved;
+      }
+
+      return (data as GoalMilestone) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveMilestone catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateMilestone(id: string, updates: Partial<GoalMilestone>): Promise<GoalMilestone> {
+    const localUpdated = await this.fallback.updateMilestone(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('goal_milestones')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateMilestone error]', error);
+        return localUpdated;
+      }
+
+      return data as GoalMilestone;
+    } catch (err) {
+      console.error('[Supabase updateMilestone catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteMilestone(id: string): Promise<void> {
+    await this.fallback.deleteMilestone(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('goal_milestones')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase deleteMilestone error]', error);
+    } catch (err) {
+      console.error('[Supabase deleteMilestone catch]', err);
+    }
+  }
+
+  async reorderMilestones(goalId: string, orderedMilestoneIds: string[]): Promise<void> {
+    await this.fallback.reorderMilestones(goalId, orderedMilestoneIds);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      for (let i = 0; i < orderedMilestoneIds.length; i++) {
+        await supabase
+          .from('goal_milestones')
+          .update({ position: i, updated_at: new Date().toISOString() })
+          .eq('id', orderedMilestoneIds[i])
+          .eq('user_id', user.id);
+      }
+    } catch (err) {
+      console.error('[Supabase reorderMilestones catch]', err);
+    }
+  }
+
+  // Goal Tasks
+  async getGoalTasks(goalId?: string, milestoneId?: string): Promise<GoalTask[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getGoalTasks(goalId, milestoneId);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getGoalTasks(goalId, milestoneId);
+
+      let query = supabase
+        .from('goal_tasks')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (goalId) query = query.eq('goal_id', goalId);
+      if (milestoneId) query = query.eq('milestone_id', milestoneId);
+
+      const { data, error } = await query.order('position', { ascending: true });
+
+      if (error || !data) {
+        console.warn('[Supabase getGoalTasks error, using fallback]', error);
+        return this.fallback.getGoalTasks(goalId, milestoneId);
+      }
+
+      if (Array.isArray(data)) {
+        for (const t of data) {
+          await this.fallback.saveGoalTask(t);
+        }
+      }
+
+      return data as GoalTask[];
+    } catch (err) {
+      console.error('[Supabase getGoalTasks exception]', err);
+      return this.fallback.getGoalTasks(goalId, milestoneId);
+    }
+  }
+
+  async saveGoalTask(task: GoalTask): Promise<GoalTask> {
+    const localSaved = await this.fallback.saveGoalTask(task);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: task.id,
+        goal_id: task.goal_id,
+        milestone_id: task.milestone_id || null,
+        user_id: user.id,
+        title: task.title,
+        is_completed: Boolean(task.is_completed),
+        due_date: task.due_date || null,
+        priority: task.priority || 'medium',
+        notes: task.notes || '',
+        position: typeof task.position === 'number' ? task.position : 0,
+        daily_planner_date: task.daily_planner_date || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('goal_tasks')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveGoalTask error]', error);
+        return localSaved;
+      }
+
+      return (data as GoalTask) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveGoalTask catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateGoalTask(id: string, updates: Partial<GoalTask>): Promise<GoalTask> {
+    const localUpdated = await this.fallback.updateGoalTask(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('goal_tasks')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateGoalTask error]', error);
+        return localUpdated;
+      }
+
+      return data as GoalTask;
+    } catch (err) {
+      console.error('[Supabase updateGoalTask catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteGoalTask(id: string): Promise<void> {
+    await this.fallback.deleteGoalTask(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('goal_tasks')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase deleteGoalTask error]', error);
+    } catch (err) {
+      console.error('[Supabase deleteGoalTask catch]', err);
     }
   }
 
