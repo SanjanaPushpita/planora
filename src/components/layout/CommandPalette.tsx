@@ -21,7 +21,8 @@ import {
   FileText,
   Lightbulb,
   Footprints,
-  Plus
+  Plus,
+  Target
 } from 'lucide-react';
 
 interface CommandPaletteProps {
@@ -68,10 +69,16 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
 
   const handleSelectResult = (r: any) => {
     onClose();
-    if (r.pageId === 'vault' || r.type === 'knowledge' || r.type === 'vocabulary') {
+    if (r.url) {
+      router.push(r.url);
+    } else if (r.pageId === 'vault' || r.type === 'knowledge' || r.type === 'vocabulary') {
       router.push('/vault');
     } else if (r.pageId === 'sprint' || r.type === 'sprint') {
       router.push('/sprint');
+    } else if (r.type === 'paper') {
+      router.push('/papers');
+    } else if (r.type === 'focus') {
+      router.push('/focus');
     } else {
       router.push(`/pages/${r.pageId}`);
     }
@@ -163,6 +170,20 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
               Quick Actions
             </div>
             <div className="space-y-1 mt-1">
+              <button
+                onClick={() => handleAction(() => router.push('/focus'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Target className="w-4 h-4 text-[var(--accent)]" />
+                <span>Start Focus Session / Deep Work</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/papers'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <FileText className="w-4 h-4 text-[var(--accent)]" />
+                <span>Open Research Paper Tracker</span>
+              </button>
               <button
                 onClick={() => handleAction(() => router.push('/sprint'))}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"

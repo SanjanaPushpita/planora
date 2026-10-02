@@ -328,6 +328,88 @@ export interface VocabularyItem {
   updated_at: string;
 }
 
+export type FocusCategory = 'Study' | 'Research' | 'Coding' | 'Reading' | 'Writing' | 'Learning Sprint' | 'Planning' | 'Other' | string;
+export type FocusEnergyLevel = 'low' | 'medium' | 'high';
+export type FocusDifficulty = 'easy' | 'moderate' | 'hard';
+
+export interface FocusSession {
+  id: string;
+  user_id?: string;
+  title: string;
+  category: FocusCategory;
+  related_goal_id?: string;
+  related_paper_id?: string;
+  related_subject_id?: string;
+  related_sprint_id?: string;
+  target_duration_seconds: number;
+  actual_duration_seconds: number;
+  started_at: string;
+  ended_at?: string;
+  distraction_count: number;
+  focus_rating?: number; // 1-5
+  energy_level?: FocusEnergyLevel;
+  difficulty?: FocusDifficulty;
+  accomplishment?: string;
+  notes?: string;
+  is_favorite?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PaperStatus = 'to_read' | 'reading' | 'finished' | 'important' | 'archived';
+export type PaperPriority = 'low' | 'medium' | 'high';
+
+export interface StructuredPaperNotes {
+  research_problem?: string;
+  research_objective?: string;
+  research_questions?: string;
+  dataset?: string;
+  dataset_size?: string;
+  data_type?: string;
+  preprocessing?: string;
+  models_methods?: string;
+  baselines?: string;
+  evaluation_metrics?: string;
+  main_results?: string;
+  best_model?: string;
+  key_findings?: string;
+  strengths?: string;
+  limitations?: string;
+  research_gap?: string;
+  future_work?: string;
+  how_can_i_use_this_paper?: string;
+  my_notes?: string;
+  quotes?: string;
+}
+
+export interface ResearchPaper {
+  id: string;
+  user_id?: string;
+  title: string;
+  authors?: string;
+  year?: number;
+  journal_conference?: string;
+  doi?: string;
+  url?: string;
+  pdf_url?: string;
+  research_area?: string;
+  tags?: string[];
+  status: PaperStatus;
+  priority: PaperPriority;
+  reading_progress: number; // 0..100
+  pages_read?: number;
+  total_pages?: number;
+  is_favorite?: boolean;
+  is_archived?: boolean;
+  is_trash?: boolean;
+  structured_notes?: StructuredPaperNotes;
+  notes?: string;
+  key_insights?: string;
+  sources?: LearningSource[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PlannerBackup {
   version: number;
   exportedAt: string;
@@ -338,4 +420,6 @@ export interface PlannerBackup {
   learningSprints?: LearningSprint[];
   knowledgeItems?: KnowledgeItem[];
   vocabularyItems?: VocabularyItem[];
+  focusSessions?: FocusSession[];
+  researchPapers?: ResearchPaper[];
 }

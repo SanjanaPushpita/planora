@@ -272,7 +272,108 @@ create policy "Users can delete their own vocabulary items"
 create index if not exists idx_vocabulary_items_user_id on public.vocabulary_items(user_id);
 create index if not exists idx_vocabulary_items_word on public.vocabulary_items(word);
 
--- 8. PROFILE AUTO-TRIGGER ON SIGNUP
+-- 8. RESEARCH PAPERS TABLE
+create table if not exists public.research_papers (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  title text not null,
+  authors text default '',
+  year integer,
+  journal_conference text default '',
+  doi text default '',
+  url text default '',
+  pdf_url text default '',
+  research_area text default 'General',
+  tags text[] default array[]::text[],
+  status text not null default 'to_read',
+  priority text not null default 'medium',
+  reading_progress integer not null default 0,
+  pages_read integer default 0,
+  total_pages integer default 0,
+  is_favorite boolean default false,
+  is_archived boolean default false,
+  is_trash boolean default false,
+  structured_notes jsonb default '{}'::jsonb,
+  notes text default '',
+  key_insights text default '',
+  sources jsonb default '[]'::jsonb,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.research_papers enable row level security;
+
+create policy "Users can view their own research papers"
+  on public.research_papers for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own research papers"
+  on public.research_papers for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own research papers"
+  on public.research_papers for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own research papers"
+  on public.research_papers for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_research_papers_user_id on public.research_papers(user_id);
+create index if not exists idx_research_papers_status on public.research_papers(status);
+create index if not exists idx_research_papers_research_area on public.research_papers(research_area);
+create index if not exists idx_research_papers_is_favorite on public.research_papers(is_favorite);
+create index if not exists idx_research_papers_created_at on public.research_papers(created_at);
+
+-- 9. FOCUS SESSIONS TABLE
+create table if not exists public.focus_sessions (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  title text not null,
+  category text not null default 'Research',
+  related_goal_id text,
+  related_paper_id text references public.research_papers(id) on delete set null,
+  related_subject_id text,
+  related_sprint_id text references public.learning_sprints(id) on delete set null,
+  target_duration_seconds integer not null default 1500,
+  actual_duration_seconds integer not null default 0,
+  started_at timestamp with time zone not null,
+  ended_at timestamp with time zone,
+  distraction_count integer default 0,
+  focus_rating integer default 5,
+  energy_level text default 'medium',
+  difficulty text default 'moderate',
+  accomplishment text default '',
+  notes text default '',
+  is_favorite boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.focus_sessions enable row level security;
+
+create policy "Users can view their own focus sessions"
+  on public.focus_sessions for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own focus sessions"
+  on public.focus_sessions for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own focus sessions"
+  on public.focus_sessions for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own focus sessions"
+  on public.focus_sessions for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_focus_sessions_user_id on public.focus_sessions(user_id);
+create index if not exists idx_focus_sessions_category on public.focus_sessions(category);
+create index if not exists idx_focus_sessions_started_at on public.focus_sessions(started_at);
+create index if not exists idx_focus_sessions_related_paper_id on public.focus_sessions(related_paper_id);
+
+-- 10. PROFILE AUTO-TRIGGER ON SIGNUP
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin

@@ -16,11 +16,13 @@ import {
   Star, 
   Trash2, 
   Settings, 
-  ChevronRight,
+  ChevronRight, 
   Heart,
   Lightbulb,
   Sparkles,
-  Footprints
+  Footprints,
+  Target,
+  Layers
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,18 +33,32 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
   const pathname = usePathname();
-  const { pages, favorites, recentPages, trashPages, profile, learningSprints, knowledgeItems } = usePlanner();
+  const { 
+    pages, 
+    favorites, 
+    recentPages, 
+    trashPages, 
+    profile, 
+    learningSprints, 
+    knowledgeItems,
+    focusSessions,
+    researchPapers 
+  } = usePlanner();
+
+  const activePapersCount = researchPapers?.filter(p => !p.is_trash).length;
 
   const mainNav = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
+    { name: 'Focus Sessions', href: '/focus', icon: Target },
+    { name: 'Research Papers', href: '/papers', icon: FileText, count: activePapersCount },
     { name: 'Learning Sprint', href: '/sprint', icon: Lightbulb },
     { name: 'Knowledge Vault', href: '/vault', icon: BookOpen, count: knowledgeItems?.length },
     { name: 'Walk Tracker', href: '/walks', icon: Footprints },
     { name: 'Habit Hub', href: '/habits', icon: Layout },
     { name: 'Study Tracker', href: '/study', icon: GraduationCap },
     { name: 'Challenges', href: '/challenges', icon: Flame },
-    { name: 'All Pages', href: '/pages', icon: FileText, count: pages.length },
+    { name: 'All Pages', href: '/pages', icon: Layers, count: pages.length },
   ];
 
   const isActive = (path: string) => {

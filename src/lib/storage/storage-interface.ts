@@ -7,7 +7,9 @@ import {
   WalkSession,
   LearningSprint,
   KnowledgeItem,
-  VocabularyItem
+  VocabularyItem,
+  FocusSession,
+  ResearchPaper
 } from '../types';
 
 export interface IPlannerStorage {
@@ -65,6 +67,20 @@ export interface IPlannerStorage {
   getVocabularyItems(): Promise<VocabularyItem[]>;
   saveVocabularyItem(item: VocabularyItem): Promise<VocabularyItem>;
   deleteVocabularyItem(id: string): Promise<void>;
+
+  // Focus Sessions / Deep Work (Durable Supabase + Recovery)
+  getFocusSessions(): Promise<FocusSession[]>;
+  saveFocusSession(session: FocusSession): Promise<FocusSession>;
+  updateFocusSession(id: string, updates: Partial<FocusSession>): Promise<FocusSession>;
+  deleteFocusSession(id: string): Promise<void>;
+
+  // Research Paper Tracker
+  getResearchPapers(includeArchived?: boolean, includeTrash?: boolean): Promise<ResearchPaper[]>;
+  getResearchPaperById(id: string): Promise<ResearchPaper | null>;
+  saveResearchPaper(paper: ResearchPaper): Promise<ResearchPaper>;
+  updateResearchPaper(id: string, updates: Partial<ResearchPaper>): Promise<ResearchPaper>;
+  deleteResearchPaper(id: string, permanent?: boolean): Promise<void>;
+  restoreResearchPaper(id: string): Promise<void>;
 
   // Backup & Restore
   exportData(): Promise<PlannerBackup>;

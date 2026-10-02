@@ -8,7 +8,9 @@ import {
   WalkSession,
   LearningSprint,
   KnowledgeItem,
-  VocabularyItem
+  VocabularyItem,
+  FocusSession,
+  ResearchPaper
 } from '../types';
 import { DEFAULT_PROFILE, INITIAL_PAGES, INITIAL_BLOCKS } from './seed-data';
 import { generateId } from '../utils';
@@ -25,6 +27,10 @@ const STORAGE_KEYS = {
   KNOWLEDGE_ITEMS: 'planora_knowledge_items',
   VOCABULARY_ITEMS: 'planora_vocabulary_items',
   LEARNING_PENDING_SYNC: 'planora_learning_pending_sync',
+  FOCUS_SESSIONS: 'planora_focus_sessions',
+  RESEARCH_PAPERS: 'planora_research_papers',
+  FOCUS_PENDING_SYNC: 'planora_focus_pending_sync',
+  PAPERS_PENDING_SYNC: 'planora_papers_pending_sync',
 };
 
 export class LocalPlannerStorage implements IPlannerStorage {
@@ -600,6 +606,173 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words.filter(w => w.id !== id));
   }
 
+  // Focus Sessions / Deep Work
+  async getFocusSessions(): Promise<FocusSession[]> {
+    this.ensureInitialized();
+    const sessions = this.getStored<FocusSession[]>(STORAGE_KEYS.FOCUS_SESSIONS, []);
+    return sessions.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+  }
+
+  async saveFocusSession(session: FocusSession): Promise<FocusSession> {
+    this.ensureInitialized();
+    const sessions = this.getStored<FocusSession[]>(STORAGE_KEYS.FOCUS_SESSIONS, []);
+    const existingIndex = sessions.findIndex(s => s.id === session.id);
+
+    const fullSession: FocusSession = {
+      ...session,
+      id: session.id || generateId(),
+      distraction_count: session.distraction_count || 0,
+      focus_rating: session.focus_rating || 5,
+      energy_level: session.energy_level || 'medium',
+      difficulty: session.difficulty || 'moderate',
+      accomplishment: session.accomplishment || '',
+      notes: session.notes || '',
+      is_favorite: Boolean(session.is_favorite),
+      created_at: session.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      sessions[existingIndex] = fullSession;
+    } else {
+      sessions.unshift(fullSession);
+    }
+
+    this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, sessions);
+    return fullSession;
+  }
+
+  async updateFocusSession(id: string, updates: Partial<FocusSession>): Promise<FocusSession> {
+    this.ensureInitialized();
+    const sessions = this.getStored<FocusSession[]>(STORAGE_KEYS.FOCUS_SESSIONS, []);
+    const index = sessions.findIndex(s => s.id === id);
+    if (index === -1) {
+      throw new Error(`Focus session ${id} not found.`);
+    }
+
+    const updated: FocusSession = {
+      ...sessions[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    sessions[index] = updated;
+    this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, sessions);
+    return updated;
+  }
+
+  async deleteFocusSession(id: string): Promise<void> {
+    this.ensureInitialized();
+    const sessions = this.getStored<FocusSession[]>(STORAGE_KEYS.FOCUS_SESSIONS, []);
+    this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, sessions.filter(s => s.id !== id));
+  }
+
+  // Research Papers
+  async getResearchPapers(includeArchived: boolean = true, includeTrash: boolean = false): Promise<ResearchPaper[]> {
+    this.ensureInitialized();
+    const papers = this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []);
+    return papers
+      .filter(p => {
+        if (!includeTrash && p.is_trash) return false;
+        if (!includeArchived && p.is_archived) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async getResearchPaperById(id: string): Promise<ResearchPaper | null> {
+    this.ensureInitialized();
+    const papers = this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []);
+    return papers.find(p => p.id === id) || null;
+  }
+
+  async saveResearchPaper(paper: ResearchPaper): Promise<ResearchPaper> {
+    this.ensureInitialized();
+    const papers = this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []);
+    const existingIndex = papers.findIndex(p => p.id === paper.id);
+
+    const fullPaper: ResearchPaper = {
+      ...paper,
+      id: paper.id || generateId(),
+      authors: paper.authors || '',
+      journal_conference: paper.journal_conference || '',
+      doi: paper.doi || '',
+      url: paper.url || '',
+      pdf_url: paper.pdf_url || '',
+      research_area: paper.research_area || 'General',
+      tags: paper.tags || [],
+      status: paper.status || 'to_read',
+      priority: paper.priority || 'medium',
+      reading_progress: typeof paper.reading_progress === 'number' ? paper.reading_progress : 0,
+      pages_read: paper.pages_read || 0,
+      total_pages: paper.total_pages || 0,
+      is_favorite: Boolean(paper.is_favorite),
+      is_archived: Boolean(paper.is_archived),
+      is_trash: Boolean(paper.is_trash),
+      structured_notes: paper.structured_notes || {},
+      notes: paper.notes || '',
+      key_insights: paper.key_insights || '',
+      sources: paper.sources || [],
+      created_at: paper.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      papers[existingIndex] = fullPaper;
+    } else {
+      papers.unshift(fullPaper);
+    }
+
+    this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, papers);
+    return fullPaper;
+  }
+
+  async updateResearchPaper(id: string, updates: Partial<ResearchPaper>): Promise<ResearchPaper> {
+    this.ensureInitialized();
+    const papers = this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []);
+    const index = papers.findIndex(p => p.id === id);
+    if (index === -1) {
+      throw new Error(`Research paper ${id} not found.`);
+    }
+
+    const updated: ResearchPaper = {
+      ...papers[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    papers[index] = updated;
+    this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, papers);
+    return updated;
+  }
+
+  async deleteResearchPaper(id: string, permanent: boolean = false): Promise<void> {
+    this.ensureInitialized();
+    const papers = this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []);
+    if (permanent) {
+      this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, papers.filter(p => p.id !== id));
+    } else {
+      const index = papers.findIndex(p => p.id === id);
+      if (index >= 0) {
+        papers[index].is_trash = true;
+        papers[index].updated_at = new Date().toISOString();
+        this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, papers);
+      }
+    }
+  }
+
+  async restoreResearchPaper(id: string): Promise<void> {
+    this.ensureInitialized();
+    const papers = this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []);
+    const index = papers.findIndex(p => p.id === id);
+    if (index >= 0) {
+      papers[index].is_trash = false;
+      papers[index].is_archived = false;
+      papers[index].updated_at = new Date().toISOString();
+      this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, papers);
+    }
+  }
+
   // Backup & Restore
   async exportData(): Promise<PlannerBackup> {
     this.ensureInitialized();
@@ -613,6 +786,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
       learningSprints: this.getStored<LearningSprint[]>(STORAGE_KEYS.LEARNING_SPRINTS, []),
       knowledgeItems: this.getStored<KnowledgeItem[]>(STORAGE_KEYS.KNOWLEDGE_ITEMS, []),
       vocabularyItems: this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []),
+      focusSessions: this.getStored<FocusSession[]>(STORAGE_KEYS.FOCUS_SESSIONS, []),
+      researchPapers: this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []),
     };
   }
 
@@ -637,6 +812,12 @@ export class LocalPlannerStorage implements IPlannerStorage {
     if (Array.isArray(data.vocabularyItems)) {
       this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, data.vocabularyItems);
     }
+    if (Array.isArray(data.focusSessions)) {
+      this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, data.focusSessions);
+    }
+    if (Array.isArray(data.researchPapers)) {
+      this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, data.researchPapers);
+    }
     return true;
   }
 
@@ -650,6 +831,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, []);
     this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, []);
     this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, []);
+    this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, []);
   }
 }
 

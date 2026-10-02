@@ -17,7 +17,9 @@ import {
   WalkSession,
   LearningSprint,
   KnowledgeItem,
-  VocabularyItem
+  VocabularyItem,
+  FocusSession,
+  ResearchPaper
 } from '../types';
 import { DEFAULT_PROFILE } from './seed-data';
 
@@ -26,7 +28,7 @@ interface SearchResult {
   pageId?: string;
   pageTitle: string;
   pageIcon: string;
-  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary';
+  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary' | 'paper' | 'focus';
   title: string;
   subtitle?: string;
   url?: string;
@@ -43,9 +45,13 @@ interface StorageContextType {
   learningSprints: LearningSprint[];
   knowledgeItems: KnowledgeItem[];
   vocabularyItems: VocabularyItem[];
+  focusSessions: FocusSession[];
+  researchPapers: ResearchPaper[];
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   walkSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   learningSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  focusSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  paperSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   isLocked: boolean;
   isReady: boolean;
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -53,6 +59,8 @@ interface StorageContextType {
   refreshProfile: () => Promise<void>;
   refreshWalkSessions: () => Promise<void>;
   refreshLearningData: () => Promise<void>;
+  refreshFocusData: () => Promise<void>;
+  refreshPapersData: () => Promise<void>;
   saveWalkSession: (session: WalkSession) => Promise<WalkSession>;
   updateWalkSession: (id: string, updates: Partial<WalkSession>) => Promise<WalkSession>;
   deleteWalkSession: (id: string) => Promise<void>;
@@ -64,6 +72,13 @@ interface StorageContextType {
   deleteKnowledgeItem: (id: string) => Promise<void>;
   saveVocabularyItem: (item: VocabularyItem) => Promise<VocabularyItem>;
   deleteVocabularyItem: (id: string) => Promise<void>;
+  saveFocusSession: (session: FocusSession) => Promise<FocusSession>;
+  updateFocusSession: (id: string, updates: Partial<FocusSession>) => Promise<FocusSession>;
+  deleteFocusSession: (id: string) => Promise<void>;
+  saveResearchPaper: (paper: ResearchPaper) => Promise<ResearchPaper>;
+  updateResearchPaper: (id: string, updates: Partial<ResearchPaper>) => Promise<ResearchPaper>;
+  deleteResearchPaper: (id: string, permanent?: boolean) => Promise<void>;
+  restoreResearchPaper: (id: string) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   createPage: (params: {
     title: string;
@@ -74,7 +89,7 @@ interface StorageContextType {
     metadata?: Record<string, any>;
   }) => Promise<PlannerPage>;
   updatePage: (id: string, updates: Partial<PlannerPage>) => Promise<PlannerPage>;
-  duplicatePage: (id: string) => Promise<PlannerPage>;
+  duplicatePage(id: string): Promise<PlannerPage>;
   moveToTrash: (id: string) => Promise<void>;
   restoreFromTrash: (id: string) => Promise<void>;
   permanentlyDeletePage: (id: string) => Promise<void>;
@@ -167,9 +182,31 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     return [];
   });
 
+  const [focusSessions, setFocusSessions] = useState<FocusSession[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_focus_sessions');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
+  const [researchPapers, setResearchPapers] = useState<ResearchPaper[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_research_papers');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [walkSaveStatus, setWalkSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [learningSaveStatus, setLearningSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [focusSaveStatus, setFocusSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [paperSaveStatus, setPaperSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [isLocked, setIsLocked] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -242,11 +279,42 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     }
   }, [storage]);
 
+  const refreshFocusData = useCallback(async () => {
+    try {
+      const list = await storage.getFocusSessions();
+      setFocusSessions(list);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_focus_sessions', JSON.stringify(list));
+      }
+    } catch (e) {
+      console.error('Failed to load focus sessions', e);
+    }
+  }, [storage]);
+
+  const refreshPapersData = useCallback(async () => {
+    try {
+      const list = await storage.getResearchPapers(true, false);
+      setResearchPapers(list);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_research_papers', JSON.stringify(list));
+      }
+    } catch (e) {
+      console.error('Failed to load research papers', e);
+    }
+  }, [storage]);
+
   useEffect(() => {
     let mounted = true;
     async function init() {
       // Parallel execution for zero sequential blocking
-      await Promise.all([refreshProfile(), refreshPages(), refreshWalkSessions(), refreshLearningData()]);
+      await Promise.all([
+        refreshProfile(), 
+        refreshPages(), 
+        refreshWalkSessions(), 
+        refreshLearningData(),
+        refreshFocusData(),
+        refreshPapersData()
+      ]);
       if (mounted) {
         setIsReady(true);
       }
@@ -256,6 +324,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     const handleOnline = () => {
       refreshWalkSessions();
       refreshLearningData();
+      refreshFocusData();
+      refreshPapersData();
     };
     if (typeof window !== 'undefined') {
       window.addEventListener('online', handleOnline);
@@ -267,7 +337,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         window.removeEventListener('online', handleOnline);
       }
     };
-  }, [refreshProfile, refreshPages, refreshWalkSessions, refreshLearningData]);
+  }, [refreshProfile, refreshPages, refreshWalkSessions, refreshLearningData, refreshFocusData, refreshPapersData]);
 
   const saveWalkSession = async (session: WalkSession): Promise<WalkSession> => {
     setWalkSaveStatus('saving');
@@ -465,6 +535,116 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       setVocabularyItems((prev) => prev.filter((v) => v.id !== id));
     } catch (e) {
       console.error('Delete vocabulary item error:', e);
+      throw e;
+    }
+  };
+
+  // Focus Session Actions
+  const saveFocusSession = async (session: FocusSession): Promise<FocusSession> => {
+    setFocusSaveStatus('saving');
+    try {
+      const saved = await storage.saveFocusSession(session);
+      setFocusSessions((prev) => [saved, ...prev.filter((s) => s.id !== saved.id)]);
+      setFocusSaveStatus('saved');
+      setTimeout(() => setFocusSaveStatus('idle'), 3000);
+      return saved;
+    } catch (e) {
+      console.error('Save focus session error:', e);
+      setFocusSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
+      setFocusSaveStatus('unsynced');
+      throw e;
+    }
+  };
+
+  const updateFocusSession = async (id: string, updates: Partial<FocusSession>): Promise<FocusSession> => {
+    setFocusSaveStatus('saving');
+    try {
+      const updated = await storage.updateFocusSession(id, updates);
+      setFocusSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
+      setFocusSaveStatus('saved');
+      setTimeout(() => setFocusSaveStatus('idle'), 2500);
+      return updated;
+    } catch (e) {
+      console.error('Update focus session error:', e);
+      setFocusSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteFocusSession = async (id: string): Promise<void> => {
+    setFocusSaveStatus('saving');
+    try {
+      await storage.deleteFocusSession(id);
+      setFocusSessions((prev) => prev.filter((s) => s.id !== id));
+      setFocusSaveStatus('saved');
+      setTimeout(() => setFocusSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Delete focus session error:', e);
+      setFocusSaveStatus('error');
+      throw e;
+    }
+  };
+
+  // Research Paper Actions
+  const saveResearchPaper = async (paper: ResearchPaper): Promise<ResearchPaper> => {
+    setPaperSaveStatus('saving');
+    try {
+      const saved = await storage.saveResearchPaper(paper);
+      setResearchPapers((prev) => [saved, ...prev.filter((p) => p.id !== saved.id)]);
+      setPaperSaveStatus('saved');
+      setTimeout(() => setPaperSaveStatus('idle'), 3000);
+      return saved;
+    } catch (e) {
+      console.error('Save research paper error:', e);
+      setResearchPapers((prev) => [paper, ...prev.filter((p) => p.id !== paper.id)]);
+      setPaperSaveStatus('unsynced');
+      throw e;
+    }
+  };
+
+  const updateResearchPaper = async (id: string, updates: Partial<ResearchPaper>): Promise<ResearchPaper> => {
+    setPaperSaveStatus('saving');
+    try {
+      const updated = await storage.updateResearchPaper(id, updates);
+      setResearchPapers((prev) => prev.map((p) => (p.id === id ? updated : p)));
+      setPaperSaveStatus('saved');
+      setTimeout(() => setPaperSaveStatus('idle'), 2500);
+      return updated;
+    } catch (e) {
+      console.error('Update research paper error:', e);
+      setPaperSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteResearchPaper = async (id: string, permanent: boolean = false): Promise<void> => {
+    setPaperSaveStatus('saving');
+    try {
+      await storage.deleteResearchPaper(id, permanent);
+      if (permanent) {
+        setResearchPapers((prev) => prev.filter((p) => p.id !== id));
+      } else {
+        setResearchPapers((prev) => prev.map((p) => (p.id === id ? { ...p, is_trash: true } : p)));
+      }
+      setPaperSaveStatus('saved');
+      setTimeout(() => setPaperSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Delete research paper error:', e);
+      setPaperSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const restoreResearchPaper = async (id: string): Promise<void> => {
+    setPaperSaveStatus('saving');
+    try {
+      await storage.restoreResearchPaper(id);
+      setResearchPapers((prev) => prev.map((p) => (p.id === id ? { ...p, is_trash: false, is_archived: false } : p)));
+      setPaperSaveStatus('saved');
+      setTimeout(() => setPaperSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Restore research paper error:', e);
+      setPaperSaveStatus('error');
       throw e;
     }
   };
@@ -715,17 +895,45 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    // Search Vocabulary Items
-    for (const v of vocabularyItems) {
-      if (v.word.toLowerCase().includes(q) || v.meaning.toLowerCase().includes(q)) {
+    // Search Research Papers
+    for (const p of researchPapers) {
+      if (p.is_trash) continue;
+      const matchTitle = p.title.toLowerCase().includes(q);
+      const matchAuthors = (p.authors || '').toLowerCase().includes(q);
+      const matchArea = (p.research_area || '').toLowerCase().includes(q);
+      const matchTags = (p.tags || []).some(t => t.toLowerCase().includes(q));
+      const matchNotes = (p.notes || '').toLowerCase().includes(q) || (p.key_insights || '').toLowerCase().includes(q);
+      const matchStructured = Object.values(p.structured_notes || {}).some(val => typeof val === 'string' && val.toLowerCase().includes(q));
+
+      if (matchTitle || matchAuthors || matchArea || matchTags || matchNotes || matchStructured) {
         results.push({
-          id: `voc-${v.id}`,
-          pageTitle: v.word,
-          pageIcon: '📖',
-          type: 'vocabulary',
-          title: v.word,
-          subtitle: `Vocabulary: ${v.meaning.substring(0, 60)}`,
-          url: `/vault?tab=vocabulary&search=${encodeURIComponent(v.word)}`,
+          id: `paper-${p.id}`,
+          pageTitle: p.title,
+          pageIcon: '📑',
+          type: 'paper',
+          title: p.title,
+          subtitle: `Research Paper • ${p.authors ? p.authors + ' • ' : ''}${p.research_area} (${p.status.replace('_', ' ')})`,
+          url: `/papers/${p.id}`,
+        });
+      }
+    }
+
+    // Search Focus Sessions
+    for (const fs of focusSessions) {
+      const matchTitle = fs.title.toLowerCase().includes(q);
+      const matchCat = (fs.category || '').toLowerCase().includes(q);
+      const matchAcc = (fs.accomplishment || '').toLowerCase().includes(q);
+      const matchNotes = (fs.notes || '').toLowerCase().includes(q);
+
+      if (matchTitle || matchCat || matchAcc || matchNotes) {
+        results.push({
+          id: `focus-${fs.id}`,
+          pageTitle: fs.title,
+          pageIcon: '🎯',
+          type: 'focus',
+          title: fs.title,
+          subtitle: `Focus Session • ${fs.category} (${Math.round(fs.actual_duration_seconds / 60)} min)`,
+          url: `/focus?session=${fs.id}`,
         });
       }
     }
@@ -749,9 +957,13 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         learningSprints,
         knowledgeItems,
         vocabularyItems,
+        focusSessions,
+        researchPapers,
         saveStatus,
         walkSaveStatus,
         learningSaveStatus,
+        focusSaveStatus,
+        paperSaveStatus,
         isLocked,
         isReady,
         setSaveStatus,
@@ -759,6 +971,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         refreshWalkSessions,
         refreshLearningData,
+        refreshFocusData,
+        refreshPapersData,
         saveWalkSession,
         updateWalkSession,
         deleteWalkSession,
@@ -770,6 +984,13 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         deleteKnowledgeItem,
         saveVocabularyItem,
         deleteVocabularyItem,
+        saveFocusSession,
+        updateFocusSession,
+        deleteFocusSession,
+        saveResearchPaper,
+        updateResearchPaper,
+        deleteResearchPaper,
+        restoreResearchPaper,
         updateProfile,
         createPage,
         updatePage,

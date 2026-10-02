@@ -23,16 +23,25 @@ import {
   Droplet,
   Coffee,
   Sun,
-  Sunset,
-  ArrowUpRight,
   Lightbulb,
   RefreshCw,
-  BookmarkCheck
+  BookmarkCheck,
+  Target,
+  FileText
 } from 'lucide-react';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { profile, pages, storage, createPage, updatePage, saveKnowledgeItem } = usePlanner();
+  const { 
+    profile, 
+    pages, 
+    storage, 
+    createPage, 
+    updatePage, 
+    saveKnowledgeItem,
+    focusSessions,
+    researchPapers 
+  } = usePlanner();
 
   const [isNewPageModalOpen, setIsNewPageModalOpen] = useState(false);
   const [modalDefaultType, setModalDefaultType] = useState<any>('daily');
@@ -345,6 +354,67 @@ export default function DashboardPage() {
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Focus & Research Quick Intelligence Row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* FOCUS TODAY */}
+        <div className="journal-paper p-5 border border-[var(--border-color)] flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <Target className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Focus Today</span>
+            </div>
+            <div className="text-xl font-bold font-serif-aesthetic text-[var(--text-primary)]">
+              {(() => {
+                const todayFocus = focusSessions.filter(s => s.started_at.startsWith(todayStr));
+                const mins = todayFocus.reduce((sum, s) => sum + Math.round((s.actual_duration_seconds || 0) / 60), 0);
+                const h = Math.floor(mins / 60);
+                const m = mins % 60;
+                const timeStr = h > 0 ? `${h}h ${m}m` : `${m} min`;
+                return `${timeStr} • ${todayFocus.length} ${todayFocus.length === 1 ? 'session' : 'sessions'}`;
+              })()}
+            </div>
+            <p className="text-[11px] text-[var(--text-secondary)]">
+              Deep work & attention tracking
+            </p>
+          </div>
+
+          <button
+            onClick={() => router.push('/focus')}
+            className="px-4 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-semibold shadow-xs shrink-0 transition-all hover:scale-[1.02] active:scale-98"
+          >
+            Start Focus
+          </button>
+        </div>
+
+        {/* RESEARCH */}
+        <div className="journal-paper p-5 border border-[var(--border-color)] flex items-center justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+              <FileText className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+              <span>Research Library</span>
+            </div>
+            <div className="text-xl font-bold font-serif-aesthetic text-[var(--text-primary)]">
+              {(() => {
+                const active = researchPapers.filter(p => !p.is_trash);
+                const reading = active.filter(p => p.status === 'reading').length;
+                const toRead = active.filter(p => p.status === 'to_read').length;
+                return `${reading} reading • ${toRead} to read`;
+              })()}
+            </div>
+            <p className="text-[11px] text-[var(--text-secondary)]">
+              Track literature & structured notes
+            </p>
+          </div>
+
+          <button
+            onClick={() => router.push('/papers')}
+            className="px-4 py-2 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-semibold text-[var(--text-primary)] shrink-0 transition-colors"
+          >
+            Open Papers
+          </button>
         </div>
       </div>
 

@@ -8,7 +8,9 @@ import {
   WalkSession,
   LearningSprint,
   KnowledgeItem,
-  VocabularyItem
+  VocabularyItem,
+  FocusSession,
+  ResearchPaper
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../../supabase/client';
 import { localPlannerStorage } from './local-storage';
@@ -837,6 +839,367 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       }
     } catch (err) {
       console.error('[Supabase deleteVocabularyItem catch]', err);
+    }
+  }
+
+  // Focus Sessions / Deep Work
+  async getFocusSessions(): Promise<FocusSession[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getFocusSessions();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getFocusSessions();
+
+      const { data, error } = await supabase
+        .from('focus_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('started_at', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getFocusSessions error, using fallback]', error);
+        return this.fallback.getFocusSessions();
+      }
+
+      if (Array.isArray(data)) {
+        for (const s of data) {
+          await this.fallback.saveFocusSession(s);
+        }
+      }
+
+      return data as FocusSession[];
+    } catch (err) {
+      console.error('[Supabase getFocusSessions exception]', err);
+      return this.fallback.getFocusSessions();
+    }
+  }
+
+  async saveFocusSession(session: FocusSession): Promise<FocusSession> {
+    const localSaved = await this.fallback.saveFocusSession(session);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: session.id,
+        user_id: user.id,
+        title: session.title,
+        category: session.category || 'Research',
+        related_goal_id: session.related_goal_id || null,
+        related_paper_id: session.related_paper_id || null,
+        related_subject_id: session.related_subject_id || null,
+        related_sprint_id: session.related_sprint_id || null,
+        target_duration_seconds: session.target_duration_seconds || 1500,
+        actual_duration_seconds: session.actual_duration_seconds || 0,
+        started_at: session.started_at,
+        ended_at: session.ended_at || null,
+        distraction_count: session.distraction_count || 0,
+        focus_rating: session.focus_rating || 5,
+        energy_level: session.energy_level || 'medium',
+        difficulty: session.difficulty || 'moderate',
+        accomplishment: session.accomplishment || '',
+        notes: session.notes || '',
+        is_favorite: Boolean(session.is_favorite),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('focus_sessions')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveFocusSession error]', error);
+        return localSaved;
+      }
+
+      return (data as FocusSession) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveFocusSession catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateFocusSession(id: string, updates: Partial<FocusSession>): Promise<FocusSession> {
+    const localUpdated = await this.fallback.updateFocusSession(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('focus_sessions')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateFocusSession error]', error);
+        return localUpdated;
+      }
+
+      return data as FocusSession;
+    } catch (err) {
+      console.error('[Supabase updateFocusSession catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteFocusSession(id: string): Promise<void> {
+    await this.fallback.deleteFocusSession(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('focus_sessions')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('[Supabase deleteFocusSession error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteFocusSession catch]', err);
+    }
+  }
+
+  // Research Paper Tracker
+  async getResearchPapers(includeArchived: boolean = true, includeTrash: boolean = false): Promise<ResearchPaper[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getResearchPapers(includeArchived, includeTrash);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getResearchPapers(includeArchived, includeTrash);
+
+      let query = supabase
+        .from('research_papers')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (!includeTrash) {
+        query = query.eq('is_trash', false);
+      }
+      if (!includeArchived) {
+        query = query.eq('is_archived', false);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getResearchPapers error, using fallback]', error);
+        return this.fallback.getResearchPapers(includeArchived, includeTrash);
+      }
+
+      if (Array.isArray(data)) {
+        for (const p of data) {
+          await this.fallback.saveResearchPaper(p);
+        }
+      }
+
+      return data as ResearchPaper[];
+    } catch (err) {
+      console.error('[Supabase getResearchPapers exception]', err);
+      return this.fallback.getResearchPapers(includeArchived, includeTrash);
+    }
+  }
+
+  async getResearchPaperById(id: string): Promise<ResearchPaper | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getResearchPaperById(id);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getResearchPaperById(id);
+
+      const { data, error } = await supabase
+        .from('research_papers')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        return this.fallback.getResearchPaperById(id);
+      }
+
+      await this.fallback.saveResearchPaper(data);
+      return data as ResearchPaper;
+    } catch (err) {
+      console.error('[Supabase getResearchPaperById exception]', err);
+      return this.fallback.getResearchPaperById(id);
+    }
+  }
+
+  async saveResearchPaper(paper: ResearchPaper): Promise<ResearchPaper> {
+    const localSaved = await this.fallback.saveResearchPaper(paper);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: paper.id,
+        user_id: user.id,
+        title: paper.title,
+        authors: paper.authors || '',
+        year: paper.year || null,
+        journal_conference: paper.journal_conference || '',
+        doi: paper.doi || '',
+        url: paper.url || '',
+        pdf_url: paper.pdf_url || '',
+        research_area: paper.research_area || 'General',
+        tags: paper.tags || [],
+        status: paper.status || 'to_read',
+        priority: paper.priority || 'medium',
+        reading_progress: typeof paper.reading_progress === 'number' ? paper.reading_progress : 0,
+        pages_read: paper.pages_read || 0,
+        total_pages: paper.total_pages || 0,
+        is_favorite: Boolean(paper.is_favorite),
+        is_archived: Boolean(paper.is_archived),
+        is_trash: Boolean(paper.is_trash),
+        structured_notes: paper.structured_notes || {},
+        notes: paper.notes || '',
+        key_insights: paper.key_insights || '',
+        sources: paper.sources || [],
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('research_papers')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveResearchPaper error]', error);
+        return localSaved;
+      }
+
+      return (data as ResearchPaper) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveResearchPaper catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateResearchPaper(id: string, updates: Partial<ResearchPaper>): Promise<ResearchPaper> {
+    const localUpdated = await this.fallback.updateResearchPaper(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('research_papers')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateResearchPaper error]', error);
+        return localUpdated;
+      }
+
+      return data as ResearchPaper;
+    } catch (err) {
+      console.error('[Supabase updateResearchPaper catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteResearchPaper(id: string, permanent: boolean = false): Promise<void> {
+    await this.fallback.deleteResearchPaper(id, permanent);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      if (permanent) {
+        const { error } = await supabase
+          .from('research_papers')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase permanent deleteResearchPaper error]', error);
+      } else {
+        const { error } = await supabase
+          .from('research_papers')
+          .update({ is_trash: true, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase trash deleteResearchPaper error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteResearchPaper catch]', err);
+    }
+  }
+
+  async restoreResearchPaper(id: string): Promise<void> {
+    await this.fallback.restoreResearchPaper(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('research_papers')
+        .update({ is_trash: false, is_archived: false, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase restoreResearchPaper error]', error);
+    } catch (err) {
+      console.error('[Supabase restoreResearchPaper catch]', err);
     }
   }
 
