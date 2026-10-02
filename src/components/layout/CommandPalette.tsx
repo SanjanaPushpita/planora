@@ -18,7 +18,10 @@ import {
   Palette, 
   Trash2, 
   X,
-  FileText
+  FileText,
+  Lightbulb,
+  Footprints,
+  Plus
 } from 'lucide-react';
 
 interface CommandPaletteProps {
@@ -65,7 +68,13 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
 
   const handleSelectResult = (r: any) => {
     onClose();
-    router.push(`/pages/${r.pageId}`);
+    if (r.pageId === 'vault' || r.type === 'knowledge' || r.type === 'vocabulary') {
+      router.push('/vault');
+    } else if (r.pageId === 'sprint' || r.type === 'sprint') {
+      router.push('/sprint');
+    } else {
+      router.push(`/pages/${r.pageId}`);
+    }
   };
 
   const handleAction = (action: () => void) => {
@@ -155,11 +164,39 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
             </div>
             <div className="space-y-1 mt-1">
               <button
+                onClick={() => handleAction(() => router.push('/sprint'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Lightbulb className="w-4 h-4 text-amber-500" />
+                <span>Start Learning Sprint (Random or Custom)</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/vault'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <BookOpen className="w-4 h-4 text-[var(--accent)]" />
+                <span>Open Knowledge Vault</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/vault?new=1'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Plus className="w-4 h-4 text-[var(--accent)]" />
+                <span>Create Knowledge Note</span>
+              </button>
+              <button
                 onClick={() => handleAction(onOpenNewPageModal)}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
               >
                 <Sparkles className="w-4 h-4 text-[var(--accent)]" />
                 <span>Create New Page / Planner...</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/walks'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Footprints className="w-4 h-4 text-[var(--accent)]" />
+                <span>Open Walk Tracker</span>
               </button>
               <button
                 onClick={() => handleAction(() => router.push('/calendar'))}

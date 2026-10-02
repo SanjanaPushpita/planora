@@ -5,7 +5,10 @@ import {
   UserProfile, 
   PlannerBackup,
   PageType,
-  WalkSession
+  WalkSession,
+  LearningSprint,
+  KnowledgeItem,
+  VocabularyItem
 } from '../types';
 import { DEFAULT_PROFILE, INITIAL_PAGES, INITIAL_BLOCKS } from './seed-data';
 import { generateId } from '../utils';
@@ -18,6 +21,10 @@ const STORAGE_KEYS = {
   LOCKED: 'planora_session_locked',
   WALK_SESSIONS: 'planora_walk_sessions',
   WALK_PENDING_SYNC: 'planora_walk_pending_sync',
+  LEARNING_SPRINTS: 'planora_learning_sprints',
+  KNOWLEDGE_ITEMS: 'planora_knowledge_items',
+  VOCABULARY_ITEMS: 'planora_vocabulary_items',
+  LEARNING_PENDING_SYNC: 'planora_learning_pending_sync',
 };
 
 export class LocalPlannerStorage implements IPlannerStorage {
@@ -447,6 +454,152 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.WALK_SESSIONS, sessions.filter(s => s.id !== id));
   }
 
+  // Learning Sprints
+  async getLearningSprints(): Promise<LearningSprint[]> {
+    this.ensureInitialized();
+    const sprints = this.getStored<LearningSprint[]>(STORAGE_KEYS.LEARNING_SPRINTS, []);
+    return sprints.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async saveLearningSprint(sprint: LearningSprint): Promise<LearningSprint> {
+    this.ensureInitialized();
+    const sprints = this.getStored<LearningSprint[]>(STORAGE_KEYS.LEARNING_SPRINTS, []);
+    const existingIndex = sprints.findIndex(s => s.id === sprint.id);
+
+    const fullSprint: LearningSprint = {
+      ...sprint,
+      id: sprint.id || generateId(),
+      created_at: sprint.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      sprints[existingIndex] = fullSprint;
+    } else {
+      sprints.unshift(fullSprint);
+    }
+
+    this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, sprints);
+    return fullSprint;
+  }
+
+  async updateLearningSprint(id: string, updates: Partial<LearningSprint>): Promise<LearningSprint> {
+    this.ensureInitialized();
+    const sprints = this.getStored<LearningSprint[]>(STORAGE_KEYS.LEARNING_SPRINTS, []);
+    const index = sprints.findIndex(s => s.id === id);
+    if (index === -1) {
+      throw new Error(`Learning sprint ${id} not found.`);
+    }
+
+    const updated: LearningSprint = {
+      ...sprints[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    sprints[index] = updated;
+    this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, sprints);
+    return updated;
+  }
+
+  async deleteLearningSprint(id: string): Promise<void> {
+    this.ensureInitialized();
+    const sprints = this.getStored<LearningSprint[]>(STORAGE_KEYS.LEARNING_SPRINTS, []);
+    this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, sprints.filter(s => s.id !== id));
+  }
+
+  // Knowledge Vault Items
+  async getKnowledgeItems(): Promise<KnowledgeItem[]> {
+    this.ensureInitialized();
+    const items = this.getStored<KnowledgeItem[]>(STORAGE_KEYS.KNOWLEDGE_ITEMS, []);
+    return items.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async saveKnowledgeItem(item: KnowledgeItem): Promise<KnowledgeItem> {
+    this.ensureInitialized();
+    const items = this.getStored<KnowledgeItem[]>(STORAGE_KEYS.KNOWLEDGE_ITEMS, []);
+    const existingIndex = items.findIndex(i => i.id === item.id);
+
+    const fullItem: KnowledgeItem = {
+      ...item,
+      id: item.id || generateId(),
+      tags: item.tags || [],
+      is_favorite: Boolean(item.is_favorite),
+      created_at: item.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      items[existingIndex] = fullItem;
+    } else {
+      items.unshift(fullItem);
+    }
+
+    this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, items);
+    return fullItem;
+  }
+
+  async updateKnowledgeItem(id: string, updates: Partial<KnowledgeItem>): Promise<KnowledgeItem> {
+    this.ensureInitialized();
+    const items = this.getStored<KnowledgeItem[]>(STORAGE_KEYS.KNOWLEDGE_ITEMS, []);
+    const index = items.findIndex(i => i.id === id);
+    if (index === -1) {
+      throw new Error(`Knowledge item ${id} not found.`);
+    }
+
+    const updated: KnowledgeItem = {
+      ...items[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    items[index] = updated;
+    this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, items);
+    return updated;
+  }
+
+  async deleteKnowledgeItem(id: string): Promise<void> {
+    this.ensureInitialized();
+    const items = this.getStored<KnowledgeItem[]>(STORAGE_KEYS.KNOWLEDGE_ITEMS, []);
+    this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, items.filter(i => i.id !== id));
+  }
+
+  // Vocabulary Items
+  async getVocabularyItems(): Promise<VocabularyItem[]> {
+    this.ensureInitialized();
+    const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    return words.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async saveVocabularyItem(item: VocabularyItem): Promise<VocabularyItem> {
+    this.ensureInitialized();
+    const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    const existingIndex = words.findIndex(w => w.id === item.id || w.word.toLowerCase() === item.word.toLowerCase());
+
+    const fullWord: VocabularyItem = {
+      ...item,
+      id: item.id || generateId(),
+      tags: item.tags || [],
+      created_at: item.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      words[existingIndex] = fullWord;
+    } else {
+      words.unshift(fullWord);
+    }
+
+    this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words);
+    return fullWord;
+  }
+
+  async deleteVocabularyItem(id: string): Promise<void> {
+    this.ensureInitialized();
+    const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words.filter(w => w.id !== id));
+  }
+
   // Backup & Restore
   async exportData(): Promise<PlannerBackup> {
     this.ensureInitialized();
@@ -456,6 +609,10 @@ export class LocalPlannerStorage implements IPlannerStorage {
       profile: await this.getProfile(),
       pages: this.getStored<PlannerPage[]>(STORAGE_KEYS.PAGES, INITIAL_PAGES),
       blocks: this.getStored<PageBlock[]>(STORAGE_KEYS.BLOCKS, INITIAL_BLOCKS),
+      walkSessions: this.getStored<WalkSession[]>(STORAGE_KEYS.WALK_SESSIONS, []),
+      learningSprints: this.getStored<LearningSprint[]>(STORAGE_KEYS.LEARNING_SPRINTS, []),
+      knowledgeItems: this.getStored<KnowledgeItem[]>(STORAGE_KEYS.KNOWLEDGE_ITEMS, []),
+      vocabularyItems: this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []),
     };
   }
 
@@ -468,6 +625,18 @@ export class LocalPlannerStorage implements IPlannerStorage {
     if (data.profile) {
       this.setStored(STORAGE_KEYS.PROFILE, data.profile);
     }
+    if (Array.isArray(data.walkSessions)) {
+      this.setStored(STORAGE_KEYS.WALK_SESSIONS, data.walkSessions);
+    }
+    if (Array.isArray(data.learningSprints)) {
+      this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, data.learningSprints);
+    }
+    if (Array.isArray(data.knowledgeItems)) {
+      this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, data.knowledgeItems);
+    }
+    if (Array.isArray(data.vocabularyItems)) {
+      this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, data.vocabularyItems);
+    }
     return true;
   }
 
@@ -477,6 +646,10 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.BLOCKS, INITIAL_BLOCKS);
     this.setStored(STORAGE_KEYS.PROFILE, DEFAULT_PROFILE);
     this.setStored(STORAGE_KEYS.LOCKED, false);
+    this.setStored(STORAGE_KEYS.WALK_SESSIONS, []);
+    this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, []);
+    this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, []);
+    this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, []);
   }
 }
 

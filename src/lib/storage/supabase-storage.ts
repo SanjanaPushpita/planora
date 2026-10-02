@@ -5,7 +5,10 @@ import {
   UserProfile, 
   PlannerBackup,
   PageType,
-  WalkSession
+  WalkSession,
+  LearningSprint,
+  KnowledgeItem,
+  VocabularyItem
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../../supabase/client';
 import { localPlannerStorage } from './local-storage';
@@ -440,6 +443,400 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       }
     } catch (err) {
       console.error('[Supabase deleteWalkSession exception]', err);
+    }
+  }
+
+  // Learning Sprints
+  async getLearningSprints(): Promise<LearningSprint[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getLearningSprints();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getLearningSprints();
+
+      const { data, error } = await supabase
+        .from('learning_sprints')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getLearningSprints error, using fallback]', error);
+        return this.fallback.getLearningSprints();
+      }
+
+      // Sync returned sprints locally
+      if (Array.isArray(data)) {
+        for (const sprint of data) {
+          await this.fallback.saveLearningSprint(sprint);
+        }
+      }
+
+      return data as LearningSprint[];
+    } catch (err) {
+      console.error('[Supabase getLearningSprints exception]', err);
+      return this.fallback.getLearningSprints();
+    }
+  }
+
+  async saveLearningSprint(sprint: LearningSprint): Promise<LearningSprint> {
+    const localSaved = await this.fallback.saveLearningSprint(sprint);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: sprint.id,
+        user_id: user.id,
+        topic: sprint.topic,
+        category: sprint.category || 'General Knowledge',
+        difficulty: sprint.difficulty || 'medium',
+        status: sprint.status || 'completed',
+        target_duration_seconds: sprint.target_duration_seconds || 900,
+        actual_duration_seconds: sprint.actual_duration_seconds || 0,
+        started_at: sprint.started_at,
+        completed_at: sprint.completed_at || null,
+        notes: sprint.notes || '',
+        key_questions: sprint.key_questions || [],
+        key_points: sprint.key_points || [],
+        new_words: sprint.new_words || [],
+        confusions: sprint.confusions || null,
+        explanation: sprint.explanation || null,
+        explain_it_back: sprint.explain_it_back || null,
+        sources: sprint.sources || [],
+        is_favorite: Boolean(sprint.is_favorite),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('learning_sprints')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveLearningSprint error]', error);
+        try {
+          const pending = JSON.parse(localStorage.getItem('planora_learning_pending_sync') || '[]');
+          if (!pending.some((s: any) => s.id === sprint.id)) {
+            pending.push({ type: 'sprint', data: sprint });
+            localStorage.setItem('planora_learning_pending_sync', JSON.stringify(pending));
+          }
+        } catch {}
+        return localSaved;
+      }
+
+      return (data as LearningSprint) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveLearningSprint catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateLearningSprint(id: string, updates: Partial<LearningSprint>): Promise<LearningSprint> {
+    const localUpdated = await this.fallback.updateLearningSprint(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('learning_sprints')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateLearningSprint error]', error);
+        return localUpdated;
+      }
+
+      return data as LearningSprint;
+    } catch (err) {
+      console.error('[Supabase updateLearningSprint catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteLearningSprint(id: string): Promise<void> {
+    await this.fallback.deleteLearningSprint(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('learning_sprints')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('[Supabase deleteLearningSprint error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteLearningSprint catch]', err);
+    }
+  }
+
+  // Knowledge Vault Items
+  async getKnowledgeItems(): Promise<KnowledgeItem[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getKnowledgeItems();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getKnowledgeItems();
+
+      const { data, error } = await supabase
+        .from('knowledge_items')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getKnowledgeItems error, using fallback]', error);
+        return this.fallback.getKnowledgeItems();
+      }
+
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          await this.fallback.saveKnowledgeItem(item);
+        }
+      }
+
+      return data as KnowledgeItem[];
+    } catch (err) {
+      console.error('[Supabase getKnowledgeItems exception]', err);
+      return this.fallback.getKnowledgeItems();
+    }
+  }
+
+  async saveKnowledgeItem(item: KnowledgeItem): Promise<KnowledgeItem> {
+    const localSaved = await this.fallback.saveKnowledgeItem(item);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: item.id,
+        user_id: user.id,
+        source_sprint_id: item.source_sprint_id || null,
+        title: item.title,
+        type: item.type || 'sprint',
+        category: item.category || 'General Knowledge',
+        tags: item.tags || [],
+        summary: item.summary || null,
+        content: item.content || '',
+        key_points: item.key_points || [],
+        sources: item.sources || [],
+        related_words: item.related_words || [],
+        is_favorite: Boolean(item.is_favorite),
+        is_archived: Boolean(item.is_archived),
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('knowledge_items')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveKnowledgeItem error]', error);
+        return localSaved;
+      }
+
+      return (data as KnowledgeItem) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveKnowledgeItem catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateKnowledgeItem(id: string, updates: Partial<KnowledgeItem>): Promise<KnowledgeItem> {
+    const localUpdated = await this.fallback.updateKnowledgeItem(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('knowledge_items')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateKnowledgeItem error]', error);
+        return localUpdated;
+      }
+
+      return data as KnowledgeItem;
+    } catch (err) {
+      console.error('[Supabase updateKnowledgeItem catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteKnowledgeItem(id: string): Promise<void> {
+    await this.fallback.deleteKnowledgeItem(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('knowledge_items')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('[Supabase deleteKnowledgeItem error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteKnowledgeItem catch]', err);
+    }
+  }
+
+  // Vocabulary Items
+  async getVocabularyItems(): Promise<VocabularyItem[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getVocabularyItems();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getVocabularyItems();
+
+      const { data, error } = await supabase
+        .from('vocabulary_items')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getVocabularyItems error, using fallback]', error);
+        return this.fallback.getVocabularyItems();
+      }
+
+      if (Array.isArray(data)) {
+        for (const v of data) {
+          await this.fallback.saveVocabularyItem(v);
+        }
+      }
+
+      return data as VocabularyItem[];
+    } catch (err) {
+      console.error('[Supabase getVocabularyItems exception]', err);
+      return this.fallback.getVocabularyItems();
+    }
+  }
+
+  async saveVocabularyItem(item: VocabularyItem): Promise<VocabularyItem> {
+    const localSaved = await this.fallback.saveVocabularyItem(item);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: item.id,
+        user_id: user.id,
+        source_knowledge_id: item.source_knowledge_id || null,
+        source_sprint_id: item.source_sprint_id || null,
+        word: item.word,
+        meaning: item.meaning,
+        example: item.example || null,
+        category: item.category || 'General',
+        tags: item.tags || [],
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('vocabulary_items')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveVocabularyItem error]', error);
+        return localSaved;
+      }
+
+      return (data as VocabularyItem) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveVocabularyItem catch]', err);
+      return localSaved;
+    }
+  }
+
+  async deleteVocabularyItem(id: string): Promise<void> {
+    await this.fallback.deleteVocabularyItem(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('vocabulary_items')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('[Supabase deleteVocabularyItem error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteVocabularyItem catch]', err);
     }
   }
 

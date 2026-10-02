@@ -18,6 +18,8 @@ import {
   Settings, 
   ChevronRight,
   Heart,
+  Lightbulb,
+  Sparkles,
   Footprints
 } from 'lucide-react';
 
@@ -29,11 +31,13 @@ interface SidebarProps {
 
 export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
   const pathname = usePathname();
-  const { pages, favorites, recentPages, trashPages, profile } = usePlanner();
+  const { pages, favorites, recentPages, trashPages, profile, learningSprints, knowledgeItems } = usePlanner();
 
   const mainNav = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Calendar', href: '/calendar', icon: Calendar },
+    { name: 'Learning Sprint', href: '/sprint', icon: Lightbulb },
+    { name: 'Knowledge Vault', href: '/vault', icon: BookOpen, count: knowledgeItems?.length },
     { name: 'Walk Tracker', href: '/walks', icon: Footprints },
     { name: 'Habit Hub', href: '/habits', icon: Layout },
     { name: 'Study Tracker', href: '/study', icon: GraduationCap },

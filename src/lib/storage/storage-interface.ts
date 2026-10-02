@@ -4,7 +4,10 @@ import {
   UserProfile, 
   PlannerBackup,
   PageType,
-  WalkSession
+  WalkSession,
+  LearningSprint,
+  KnowledgeItem,
+  VocabularyItem
 } from '../types';
 
 export interface IPlannerStorage {
@@ -45,6 +48,23 @@ export interface IPlannerStorage {
   saveWalkSession(session: WalkSession): Promise<WalkSession>;
   updateWalkSession(id: string, updates: Partial<WalkSession>): Promise<WalkSession>;
   deleteWalkSession(id: string): Promise<void>;
+
+  // Learning Sprints (Durable Supabase + Offline Draft Safety)
+  getLearningSprints(): Promise<LearningSprint[]>;
+  saveLearningSprint(sprint: LearningSprint): Promise<LearningSprint>;
+  updateLearningSprint(id: string, updates: Partial<LearningSprint>): Promise<LearningSprint>;
+  deleteLearningSprint(id: string): Promise<void>;
+
+  // Knowledge Vault Items
+  getKnowledgeItems(): Promise<KnowledgeItem[]>;
+  saveKnowledgeItem(item: KnowledgeItem): Promise<KnowledgeItem>;
+  updateKnowledgeItem(id: string, updates: Partial<KnowledgeItem>): Promise<KnowledgeItem>;
+  deleteKnowledgeItem(id: string): Promise<void>;
+
+  // Vocabulary Items
+  getVocabularyItems(): Promise<VocabularyItem[]>;
+  saveVocabularyItem(item: VocabularyItem): Promise<VocabularyItem>;
+  deleteVocabularyItem(id: string): Promise<void>;
 
   // Backup & Restore
   exportData(): Promise<PlannerBackup>;

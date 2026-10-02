@@ -252,10 +252,90 @@ export interface PageBlock<T extends BlockType = BlockType> {
   updated_at: string;
 }
 
+export type LearningDifficulty = 'easy' | 'medium' | 'advanced' | 'mixed';
+export type LearningSprintStatus = 'in_progress' | 'completed' | 'abandoned';
+export type KnowledgeItemType = 'sprint' | 'note' | 'concept' | 'vocabulary' | 'link';
+
+export interface LearningSource {
+  id: string;
+  sprint_id?: string;
+  user_id?: string;
+  title: string;
+  url: string;
+  note?: string;
+}
+
+export interface LearningWord {
+  word: string;
+  meaning: string;
+  example?: string;
+}
+
+export interface LearningSprint {
+  id: string;
+  user_id?: string;
+  topic: string;
+  category: string;
+  difficulty: LearningDifficulty;
+  status: LearningSprintStatus;
+  target_duration_seconds: number;
+  actual_duration_seconds: number;
+  started_at: string;
+  completed_at?: string;
+  notes: string; // rich text HTML
+  key_questions?: string[];
+  key_points?: string[];
+  new_words?: LearningWord[];
+  confusions?: string;
+  explanation?: string;
+  explain_it_back?: string;
+  sources?: LearningSource[];
+  is_favorite?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface KnowledgeItem {
+  id: string;
+  user_id?: string;
+  source_sprint_id?: string;
+  title: string;
+  type: KnowledgeItemType;
+  category: string;
+  tags: string[];
+  summary?: string;
+  content: string; // rich text HTML
+  key_points?: string[];
+  sources?: LearningSource[];
+  related_words?: LearningWord[];
+  is_favorite: boolean;
+  is_archived?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface VocabularyItem {
+  id: string;
+  user_id?: string;
+  source_knowledge_id?: string;
+  source_sprint_id?: string;
+  word: string;
+  meaning: string;
+  example?: string;
+  category?: string;
+  tags?: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PlannerBackup {
   version: number;
   exportedAt: string;
   profile: UserProfile;
   pages: PlannerPage[];
   blocks: PageBlock[];
+  walkSessions?: WalkSession[];
+  learningSprints?: LearningSprint[];
+  knowledgeItems?: KnowledgeItem[];
+  vocabularyItems?: VocabularyItem[];
 }

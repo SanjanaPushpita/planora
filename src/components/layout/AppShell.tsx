@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { usePlanner } from '@/lib/storage';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -11,6 +12,7 @@ import { LockScreen } from './LockScreen';
 import { useKeyboard } from '@/lib/hooks/useKeyboard';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const { isLocked, isReady } = usePlanner();
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -28,6 +30,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       setIsSidebarOpen(false);
     },
     onToggleSidebar: () => setIsSidebarOpen((prev) => !prev),
+    onLearningSprint: () => router.push('/sprint'),
   });
 
   if (!isReady) {

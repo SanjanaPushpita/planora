@@ -4,7 +4,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { usePlanner } from '@/lib/storage';
 import { PageBlock, HabitBlockContent, ChallengeBlockContent, ChecklistBlockContent } from '@/lib/types';
-import { formatDate, getTodayDateString } from '@/lib/utils';
+import { getTodayDateString, formatDate, generateId } from '@/lib/utils';
+import { getDailyCuriosityTopic, getRandomTopic, CuratedTopic } from '@/lib/learning-topics';
 import { NewPageModal } from '@/components/modals/NewPageModal';
 import { 
   Sparkles, 
@@ -23,16 +24,21 @@ import {
   Coffee,
   Sun,
   Sunset,
-  ArrowUpRight
+  ArrowUpRight,
+  Lightbulb,
+  RefreshCw,
+  BookmarkCheck
 } from 'lucide-react';
 
 export default function DashboardPage() {
   const router = useRouter();
-  const { profile, pages, storage, createPage, updatePage } = usePlanner();
+  const { profile, pages, storage, createPage, updatePage, saveKnowledgeItem } = usePlanner();
 
   const [isNewPageModalOpen, setIsNewPageModalOpen] = useState(false);
   const [modalDefaultType, setModalDefaultType] = useState<any>('daily');
   const [quickNote, setQuickNote] = useState('');
+  const [curiosityTopic, setCuriosityTopic] = useState<CuratedTopic>(() => getDailyCuriosityTopic());
+  const [savedForLater, setSavedForLater] = useState(false);
   const [todayHabits, setTodayHabits] = useState<{ blockId: string; habitId: string; name: string; isCompleted: boolean }[]>([]);
   const [todayTasks, setTodayTasks] = useState<{ blockId: string; taskId: string; text: string; completed: boolean }[]>([]);
   const [activeChallenges, setActiveChallenges] = useState<{ id: string; title: string; totalDays: number; completedCount: number; percentage: number }[]>([]);
@@ -202,6 +208,39 @@ export default function DashboardPage() {
     }
   };
 
+  const handleNextTopic = () => {
+    setCuriosityTopic(getRandomTopic());
+    setSavedForLater(false);
+  };
+
+  const handleStartDailySprint = () => {
+    router.push(`/sprint?topic=${encodeURIComponent(curiosityTopic.topic)}&category=${encodeURIComponent(curiosityTopic.category)}&duration=15`);
+  };
+
+  const handleSaveCuriosityForLater = async () => {
+    if (!curiosityTopic) return;
+    try {
+      const now = new Date().toISOString();
+      await saveKnowledgeItem({
+        id: `know-${generateId()}`,
+        title: curiosityTopic.topic,
+        type: 'concept',
+        category: curiosityTopic.category,
+        summary: curiosityTopic.description,
+        content: `<p>${curiosityTopic.description}</p><h3>Starter Questions</h3><ul>${curiosityTopic.starterQuestions.map((q: string) => `<li>${q}</li>`).join('')}</ul>`,
+        tags: [curiosityTopic.category.toLowerCase(), 'curiosity', 'saved-for-later'],
+        is_favorite: false,
+        sources: [],
+        key_points: [],
+        created_at: now,
+        updated_at: now,
+      });
+      setSavedForLater(true);
+    } catch (e) {
+      console.error('Failed to save curiosity topic:', e);
+    }
+  };
+
   const quickActionTemplates = [
     { label: 'Daily Planner', icon: Sparkles, type: 'daily' },
     { label: 'Habit Tracker', icon: Layout, type: 'habit' },
@@ -235,13 +274,75 @@ export default function DashboardPage() {
           </div>
 
           {/* Today's Planner CTA */}
-          <div className="shrink-0">
+          <div className="shrink-0 flex items-center gap-2">
             <button
               onClick={handleOpenOrCreateTodayPlanner}
               className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-sm font-semibold shadow-md hover:scale-[1.02] active:scale-98 transition-all"
             >
               <Sparkles className="w-4 h-4" />
               <span>{todayPlanner ? "Open Today's Planner" : "Start Today's Planner"}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* LEARN SOMETHING NEW: Today's Discovery Curiosity Card */}
+      <div className="journal-paper p-5 sm:p-6 border border-[var(--border-color)] relative overflow-hidden bg-gradient-to-r from-[var(--bg-paper)] to-[var(--bg-paper-subtle)]">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div className="space-y-1.5 max-w-xl">
+            <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40">
+                <Lightbulb className="w-3 h-3" />
+                <span>Today&apos;s Discovery</span>
+              </span>
+              <span className="text-[11px] text-[var(--text-muted)] font-medium">
+                {curiosityTopic.category} • <span className="capitalize">{curiosityTopic.difficulty}</span>
+              </span>
+            </div>
+            
+            <h3 className="font-serif-aesthetic text-base sm:text-lg font-bold text-[var(--text-primary)] leading-tight">
+              &ldquo;{curiosityTopic.topic}&rdquo;
+            </h3>
+            
+            <p className="text-xs text-[var(--text-secondary)] line-clamp-2">
+              {curiosityTopic.description}
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0 flex-wrap md:flex-nowrap">
+            <button
+              onClick={handleStartDailySprint}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-semibold shadow-xs transition-all hover:scale-[1.02] active:scale-98"
+            >
+              <Lightbulb className="w-3.5 h-3.5" />
+              <span>Start 15-Min Sprint</span>
+            </button>
+
+            <button
+              onClick={handleSaveCuriosityForLater}
+              disabled={savedForLater}
+              className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
+                savedForLater
+                  ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-300'
+                  : 'bg-[var(--bg-paper)] hover:bg-[var(--bg-paper-hover)] text-[var(--text-secondary)] border-[var(--border-color)]'
+              }`}
+            >
+              {savedForLater ? (
+                <>
+                  <BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Saved ✓</span>
+                </>
+              ) : (
+                <span>Save for Later</span>
+              )}
+            </button>
+
+            <button
+              onClick={handleNextTopic}
+              title="Another topic"
+              className="p-2 rounded-xl bg-[var(--bg-paper)] hover:bg-[var(--bg-paper-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border-color)] transition-colors"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
