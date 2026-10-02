@@ -107,7 +107,46 @@ create policy "Users can delete their own blocks"
 create index if not exists idx_blocks_page_id on public.page_blocks(page_id);
 create index if not exists idx_blocks_position on public.page_blocks(position);
 
--- 4. PROFILE AUTO-TRIGGER ON SIGNUP
+-- 4. WALK SESSIONS TABLE
+create table if not exists public.walk_sessions (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  page_id text references public.pages(id) on delete set null,
+  started_at timestamp with time zone not null,
+  ended_at timestamp with time zone not null,
+  duration_seconds integer not null,
+  target_duration_seconds integer not null default 300,
+  date text not null,
+  hour integer not null,
+  feeling text,
+  note text,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.walk_sessions enable row level security;
+
+create policy "Users can view their own walk sessions"
+  on public.walk_sessions for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own walk sessions"
+  on public.walk_sessions for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own walk sessions"
+  on public.walk_sessions for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own walk sessions"
+  on public.walk_sessions for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_walk_sessions_user_id on public.walk_sessions(user_id);
+create index if not exists idx_walk_sessions_date on public.walk_sessions(date);
+create index if not exists idx_walk_sessions_page_id on public.walk_sessions(page_id);
+
+-- 5. PROFILE AUTO-TRIGGER ON SIGNUP
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -127,3 +166,4 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+

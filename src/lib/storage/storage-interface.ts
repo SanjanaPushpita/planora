@@ -3,7 +3,8 @@ import {
   PageBlock, 
   UserProfile, 
   PlannerBackup,
-  PageType 
+  PageType,
+  WalkSession
 } from '../types';
 
 export interface IPlannerStorage {
@@ -39,8 +40,15 @@ export interface IPlannerStorage {
   deleteBlock(id: string): Promise<void>;
   reorderBlocks(pageId: string, orderedBlockIds: string[]): Promise<void>;
 
+  // Walk Sessions (Durable Supabase + Offline Queue + Local Storage)
+  getWalkSessions(params?: { pageId?: string; startDate?: string; endDate?: string }): Promise<WalkSession[]>;
+  saveWalkSession(session: WalkSession): Promise<WalkSession>;
+  updateWalkSession(id: string, updates: Partial<WalkSession>): Promise<WalkSession>;
+  deleteWalkSession(id: string): Promise<void>;
+
   // Backup & Restore
   exportData(): Promise<PlannerBackup>;
   importData(data: PlannerBackup): Promise<boolean>;
   resetToDefault(): Promise<void>;
 }
+

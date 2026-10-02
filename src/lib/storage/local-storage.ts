@@ -4,7 +4,8 @@ import {
   PageBlock, 
   UserProfile, 
   PlannerBackup,
-  PageType 
+  PageType,
+  WalkSession
 } from '../types';
 import { DEFAULT_PROFILE, INITIAL_PAGES, INITIAL_BLOCKS } from './seed-data';
 import { generateId } from '../utils';
@@ -15,6 +16,8 @@ const STORAGE_KEYS = {
   PAGES: 'planora_planner_pages',
   BLOCKS: 'planora_page_blocks',
   LOCKED: 'planora_session_locked',
+  WALK_SESSIONS: 'planora_walk_sessions',
+  WALK_PENDING_SYNC: 'planora_walk_pending_sync',
 };
 
 export class LocalPlannerStorage implements IPlannerStorage {
@@ -329,6 +332,119 @@ export class LocalPlannerStorage implements IPlannerStorage {
     });
 
     this.setStored(STORAGE_KEYS.BLOCKS, [...otherBlocks, ...updatedPageBlocks]);
+  }
+
+  // Walk Sessions (Durable Storage + Recovery)
+  async getWalkSessions(params?: { pageId?: string; startDate?: string; endDate?: string }): Promise<WalkSession[]> {
+    this.ensureInitialized();
+    let sessions = this.getStored<WalkSession[]>(STORAGE_KEYS.WALK_SESSIONS, []);
+
+    // ONE-TIME RECOVERY / MIGRATION: check if any sessions exist in legacy global walk key or block contents
+    let needPersist = false;
+    const existingIds = new Set(sessions.map(s => s.id));
+
+    if (this.isBrowser()) {
+      try {
+        const legacyGlobal = localStorage.getItem('planora_global_walk_tracker');
+        if (legacyGlobal) {
+          const parsed = JSON.parse(legacyGlobal);
+          if (Array.isArray(parsed.sessions)) {
+            for (const s of parsed.sessions) {
+              if (s && s.id && !existingIds.has(s.id)) {
+                sessions.push(s);
+                existingIds.add(s.id);
+                needPersist = true;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error recovering legacy global walk sessions:', e);
+      }
+
+      // Also check blocks in storage
+      try {
+        const blocks = this.getStored<PageBlock[]>(STORAGE_KEYS.BLOCKS, []);
+        for (const b of blocks) {
+          if (b.type === 'walk_tracker' && b.content && Array.isArray((b.content as any).sessions)) {
+            for (const s of (b.content as any).sessions) {
+              if (s && s.id && !existingIds.has(s.id)) {
+                sessions.push({ ...s, page_id: s.page_id || b.page_id });
+                existingIds.add(s.id);
+                needPersist = true;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error recovering block walk sessions:', e);
+      }
+    }
+
+    if (needPersist) {
+      this.setStored(STORAGE_KEYS.WALK_SESSIONS, sessions);
+    }
+
+    // Filter
+    let filtered = sessions;
+    if (params?.pageId) {
+      filtered = filtered.filter(s => s.page_id === params.pageId || (s as any).tracker_id === params.pageId);
+    }
+    if (params?.startDate) {
+      filtered = filtered.filter(s => s.date >= params.startDate!);
+    }
+    if (params?.endDate) {
+      filtered = filtered.filter(s => s.date <= params.endDate!);
+    }
+
+    return filtered.sort((a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime());
+  }
+
+  async saveWalkSession(session: WalkSession): Promise<WalkSession> {
+    this.ensureInitialized();
+    const sessions = this.getStored<WalkSession[]>(STORAGE_KEYS.WALK_SESSIONS, []);
+    const existingIndex = sessions.findIndex(s => s.id === session.id);
+
+    const fullSession: WalkSession = {
+      ...session,
+      id: session.id || generateId(),
+      created_at: session.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      sessions[existingIndex] = fullSession;
+    } else {
+      sessions.unshift(fullSession);
+    }
+
+    this.setStored(STORAGE_KEYS.WALK_SESSIONS, sessions);
+    return fullSession;
+  }
+
+  async updateWalkSession(id: string, updates: Partial<WalkSession>): Promise<WalkSession> {
+    this.ensureInitialized();
+    const sessions = this.getStored<WalkSession[]>(STORAGE_KEYS.WALK_SESSIONS, []);
+    const index = sessions.findIndex(s => s.id === id);
+    if (index === -1) {
+      throw new Error(`Walk session ${id} not found.`);
+    }
+
+    const updated: WalkSession = {
+      ...sessions[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    sessions[index] = updated;
+    this.setStored(STORAGE_KEYS.WALK_SESSIONS, sessions);
+    return updated;
+  }
+
+  async deleteWalkSession(id: string): Promise<void> {
+    this.ensureInitialized();
+    const sessions = this.getStored<WalkSession[]>(STORAGE_KEYS.WALK_SESSIONS, []);
+    this.setStored(STORAGE_KEYS.WALK_SESSIONS, sessions.filter(s => s.id !== id));
   }
 
   // Backup & Restore

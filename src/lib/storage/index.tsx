@@ -13,7 +13,8 @@ import {
   ChecklistBlockContent,
   HabitBlockContent,
   StudyLogBlockContent,
-  ParagraphContent
+  ParagraphContent,
+  WalkSession
 } from '../types';
 import { DEFAULT_PROFILE } from './seed-data';
 
@@ -34,12 +35,18 @@ interface StorageContextType {
   trashPages: PlannerPage[];
   favorites: PlannerPage[];
   recentPages: PlannerPage[];
+  walkSessions: WalkSession[];
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
+  walkSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   isLocked: boolean;
   isReady: boolean;
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
   refreshPages: () => Promise<void>;
   refreshProfile: () => Promise<void>;
+  refreshWalkSessions: () => Promise<void>;
+  saveWalkSession: (session: WalkSession) => Promise<WalkSession>;
+  updateWalkSession: (id: string, updates: Partial<WalkSession>) => Promise<WalkSession>;
+  deleteWalkSession: (id: string) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   createPage: (params: {
     title: string;
@@ -103,7 +110,18 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     return [];
   });
 
+  const [walkSessions, setWalkSessions] = useState<WalkSession[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_walk_sessions');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [walkSaveStatus, setWalkSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [isLocked, setIsLocked] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -144,20 +162,88 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     }
   }, [storage]);
 
+  const refreshWalkSessions = useCallback(async () => {
+    try {
+      const list = await storage.getWalkSessions();
+      setWalkSessions(list);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_walk_sessions', JSON.stringify(list));
+      }
+    } catch (e) {
+      console.error('Failed to load walk sessions', e);
+    }
+  }, [storage]);
+
   useEffect(() => {
     let mounted = true;
     async function init() {
       // Parallel execution for zero sequential blocking
-      await Promise.all([refreshProfile(), refreshPages()]);
+      await Promise.all([refreshProfile(), refreshPages(), refreshWalkSessions()]);
       if (mounted) {
         setIsReady(true);
       }
     }
     init();
+
+    const handleOnline = () => {
+      refreshWalkSessions();
+    };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+    }
+
     return () => {
       mounted = false;
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+      }
     };
-  }, [refreshProfile, refreshPages]);
+  }, [refreshProfile, refreshPages, refreshWalkSessions]);
+
+  const saveWalkSession = async (session: WalkSession): Promise<WalkSession> => {
+    setWalkSaveStatus('saving');
+    try {
+      const saved = await storage.saveWalkSession(session);
+      setWalkSessions((prev) => [saved, ...prev.filter((s) => s.id !== saved.id)]);
+      setWalkSaveStatus('saved');
+      setTimeout(() => setWalkSaveStatus('idle'), 3000);
+      return saved;
+    } catch (e) {
+      console.error('Save walk session error:', e);
+      setWalkSessions((prev) => [session, ...prev.filter((s) => s.id !== session.id)]);
+      setWalkSaveStatus('unsynced');
+      throw e;
+    }
+  };
+
+  const updateWalkSession = async (id: string, updates: Partial<WalkSession>): Promise<WalkSession> => {
+    setWalkSaveStatus('saving');
+    try {
+      const updated = await storage.updateWalkSession(id, updates);
+      setWalkSessions((prev) => prev.map((s) => (s.id === id ? updated : s)));
+      setWalkSaveStatus('saved');
+      setTimeout(() => setWalkSaveStatus('idle'), 2500);
+      return updated;
+    } catch (e) {
+      console.error('Update walk session error:', e);
+      setWalkSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteWalkSession = async (id: string): Promise<void> => {
+    setWalkSaveStatus('saving');
+    try {
+      await storage.deleteWalkSession(id);
+      setWalkSessions((prev) => prev.filter((s) => s.id !== id));
+      setWalkSaveStatus('saved');
+      setTimeout(() => setWalkSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Delete walk session error:', e);
+      setWalkSaveStatus('error');
+      throw e;
+    }
+  };
 
   const updateProfile = async (updates: Partial<UserProfile>) => {
     setSaveStatus('saving');
@@ -399,12 +485,18 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         trashPages,
         favorites,
         recentPages,
+        walkSessions,
         saveStatus,
+        walkSaveStatus,
         isLocked,
         isReady,
         setSaveStatus,
         refreshPages,
         refreshProfile,
+        refreshWalkSessions,
+        saveWalkSession,
+        updateWalkSession,
+        deleteWalkSession,
         updateProfile,
         createPage,
         updatePage,

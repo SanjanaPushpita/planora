@@ -6,6 +6,7 @@ import {
   WalkSession, 
   WalkFeeling 
 } from '@/lib/types';
+import { usePlanner } from '@/lib/storage';
 import { 
   generateId, 
   getTodayDateString, 
@@ -36,7 +37,8 @@ import {
   Sparkles, 
   Info, 
   Bell, 
-  SlidersHorizontal 
+  SlidersHorizontal,
+  Loader2
 } from 'lucide-react';
 
 interface WalkTrackerBlockProps {
@@ -54,6 +56,14 @@ const FEELINGS: { key: WalkFeeling; label: string; emoji: string }[] = [
 ];
 
 export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: WalkTrackerBlockProps) {
+  const { 
+    walkSessions, 
+    saveWalkSession, 
+    updateWalkSession, 
+    deleteWalkSession, 
+    walkSaveStatus 
+  } = usePlanner();
+
   const [data, setData] = useState<WalkTrackerContent>(
     content || { targetMinutes: 5, sessions: [], notes: '' }
   );
@@ -63,6 +73,24 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
       setData(content);
     }
   }, [content]);
+
+  // Combined source of truth: prioritize durable sessions from Supabase/Storage
+  const allSessions = useMemo(() => {
+    const map = new Map<string, WalkSession>();
+    // Add persistent walkSessions from Storage Context
+    for (const s of walkSessions) {
+      map.set(s.id, s);
+    }
+    // Merge any block-specific sessions if present
+    for (const s of data.sessions || []) {
+      if (!map.has(s.id)) {
+        map.set(s.id, s);
+      }
+    }
+    return Array.from(map.values()).sort(
+      (a, b) => new Date(b.started_at).getTime() - new Date(a.started_at).getTime()
+    );
+  }, [walkSessions, data.sessions]);
 
   const updateData = (next: WalkTrackerContent) => {
     setData(next);
@@ -238,7 +266,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
     setPostNote('');
   };
 
-  const handleSaveCompletedSession = (feeling: WalkFeeling | null, note: string) => {
+  const handleSaveCompletedSession = async (feeling: WalkFeeling | null, note: string) => {
     if (!completedSessionData) return;
 
     const startDate = new Date(completedSessionData.started_at);
@@ -247,6 +275,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
 
     const newSession: WalkSession = {
       id: generateId(),
+      page_id: blockId && blockId !== 'default' && blockId !== 'global' ? blockId : undefined,
       started_at: completedSessionData.started_at,
       ended_at: completedSessionData.ended_at,
       duration_seconds: completedSessionData.duration_seconds,
@@ -259,16 +288,26 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
       updated_at: new Date().toISOString(),
     };
 
-    const nextSessions = [newSession, ...(data.sessions || [])];
-    updateData({
-      ...data,
-      sessions: nextSessions,
-    });
-
     setCompletedSessionData(null);
     setPostFeeling(null);
     setPostNote('');
     setElapsedSeconds(0);
+
+    try {
+      await saveWalkSession(newSession);
+      const nextSessions = [newSession, ...(data.sessions || []).filter(s => s.id !== newSession.id)];
+      updateData({
+        ...data,
+        sessions: nextSessions,
+      });
+    } catch (e) {
+      console.error('Failed to persist completed walk session:', e);
+      const nextSessions = [newSession, ...(data.sessions || []).filter(s => s.id !== newSession.id)];
+      updateData({
+        ...data,
+        sessions: nextSessions,
+      });
+    }
   };
 
   // -------------------------------------------------------------
@@ -285,7 +324,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
   const [manualFeeling, setManualFeeling] = useState<WalkFeeling | null>('good');
   const [manualNote, setManualNote] = useState('');
 
-  const handleSaveManualWalk = (e: React.FormEvent) => {
+  const handleSaveManualWalk = async (e: React.FormEvent) => {
     e.preventDefault();
     const mins = parseInt(manualMinutes, 10) || 0;
     const secs = parseInt(manualSeconds, 10) || 0;
@@ -300,25 +339,37 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
 
     const newSession: WalkSession = {
       id: generateId(),
+      page_id: blockId && blockId !== 'default' && blockId !== 'global' ? blockId : undefined,
       started_at,
       ended_at,
       duration_seconds: totalSecs,
       target_duration_seconds: (data.targetMinutes || 5) * 60,
       date: manualDate,
       hour: hourNum,
-      feeling: manualFeeling,
+      feeling: manualFeeling || undefined,
       note: manualNote.trim() || undefined,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
 
-    updateData({
-      ...data,
-      sessions: [newSession, ...(data.sessions || [])],
-    });
-
     setIsManualModalOpen(false);
     setManualNote('');
+
+    try {
+      await saveWalkSession(newSession);
+      const nextSessions = [newSession, ...(data.sessions || []).filter(s => s.id !== newSession.id)];
+      updateData({
+        ...data,
+        sessions: nextSessions,
+      });
+    } catch (e) {
+      console.error('Failed to persist manual walk:', e);
+      const nextSessions = [newSession, ...(data.sessions || []).filter(s => s.id !== newSession.id)];
+      updateData({
+        ...data,
+        sessions: nextSessions,
+      });
+    }
   };
 
   // -------------------------------------------------------------
@@ -326,23 +377,36 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
   // -------------------------------------------------------------
   const [editingSession, setEditingSession] = useState<WalkSession | null>(null);
 
-  const handleUpdateSession = (e: React.FormEvent) => {
+  const handleUpdateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingSession) return;
 
-    const nextSessions = (data.sessions || []).map((s) =>
-      s.id === editingSession.id ? { ...editingSession, updated_at: new Date().toISOString() } : s
-    );
-    updateData({ ...data, sessions: nextSessions });
+    const updated = { ...editingSession, updated_at: new Date().toISOString() };
     setEditingSession(null);
+
+    try {
+      await updateWalkSession(updated.id, updated);
+      const nextSessions = (data.sessions || []).map((s) =>
+        s.id === updated.id ? updated : s
+      );
+      updateData({ ...data, sessions: nextSessions });
+    } catch (e) {
+      console.error('Failed to update session:', e);
+    }
   };
 
-  const handleDeleteSession = (sessionId: string) => {
-    const nextSessions = (data.sessions || []).filter((s) => s.id !== sessionId);
-    updateData({ ...data, sessions: nextSessions });
-    if (selectedCell) {
-      // Refresh selected cell sessions
-      setSelectedCell(null);
+  const handleDeleteSession = async (sessionId: string) => {
+    try {
+      await deleteWalkSession(sessionId);
+      const nextSessions = (data.sessions || []).filter((s) => s.id !== sessionId);
+      updateData({ ...data, sessions: nextSessions });
+      if (selectedCell) {
+        setSelectedCell((prev) =>
+          prev ? { ...prev, sessions: prev.sessions.filter((s) => s.id !== sessionId) } : null
+        );
+      }
+    } catch (e) {
+      console.error('Failed to delete session:', e);
     }
   };
 
@@ -397,7 +461,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
     const monthStr = String(selectedMonth + 1).padStart(2, '0');
     const monthPrefix = `${selectedYear}-${monthStr}`;
 
-    for (const session of data.sessions || []) {
+    for (const session of allSessions) {
       const segments = splitWalkSessionByHours(session);
       for (const seg of segments) {
         if (seg.date.startsWith(monthPrefix)) {
@@ -413,7 +477,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
     }
 
     return grid;
-  }, [data.sessions, selectedYear, selectedMonth, daysInSelectedMonth]);
+  }, [allSessions, selectedYear, selectedMonth, daysInSelectedMonth]);
 
   // Selected cell for detailed inspection
   const [selectedCell, setSelectedCell] = useState<{
@@ -458,7 +522,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
 
     for (let h = 0; h < 24; h++) hourlyMinutesMap[h] = 0;
 
-    for (const session of data.sessions || []) {
+    for (const session of allSessions) {
       const segments = splitWalkSessionByHours(session);
       let sessionContributed = false;
       for (const seg of segments) {
@@ -488,7 +552,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
       hourlyMinutesMap,
       sessions: activeSessions,
     };
-  }, [data.sessions, selectedDayForSummary, data.targetMinutes]);
+  }, [allSessions, selectedDayForSummary, data.targetMinutes]);
 
   // -------------------------------------------------------------
   // MONTHLY SUMMARY STATISTICS
@@ -503,7 +567,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
     let targetHoursAchieved = 0;
     let maxSessionDurationSec = 0;
 
-    for (const session of data.sessions || []) {
+    for (const session of allSessions) {
       const segments = splitWalkSessionByHours(session);
       let sessionMatchesMonth = false;
       for (const seg of segments) {
@@ -542,7 +606,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
       targetHoursAchieved,
       longestSessionMinutes: Math.round(maxSessionDurationSec / 60),
     };
-  }, [data.sessions, selectedYear, selectedMonth, daysInSelectedMonth, heatmapData, data.targetMinutes]);
+  }, [allSessions, selectedYear, selectedMonth, daysInSelectedMonth, heatmapData, data.targetMinutes]);
 
   // Timer formatted strings
   const targetSec = targetMinutes * 60;
@@ -560,9 +624,35 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
             <Footprints className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="font-serif-aesthetic text-xl sm:text-2xl font-bold text-[var(--text-primary)]">
-              Hourly Walk Tracker
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-serif-aesthetic text-xl sm:text-2xl font-bold text-[var(--text-primary)]">
+                Hourly Walk Tracker
+              </h3>
+              {walkSaveStatus === 'saving' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 text-[10px] font-semibold animate-pulse">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>Saving walk...</span>
+                </span>
+              )}
+              {walkSaveStatus === 'saved' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 text-[10px] font-semibold animate-fadeIn">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Walk saved ✓</span>
+                </span>
+              )}
+              {walkSaveStatus === 'unsynced' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-[10px] font-semibold">
+                  <Info className="w-3 h-3" />
+                  <span>Saved locally (pending sync)</span>
+                </span>
+              )}
+              {walkSaveStatus === 'error' && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-[10px] font-semibold">
+                  <X className="w-3 h-3" />
+                  <span>Save error</span>
+                </span>
+              )}
+            </div>
             <p className="font-serif-aesthetic italic text-xs text-[var(--text-secondary)]">
               5 minutes of movement every hour for vitality, posture & focus
             </p>
@@ -805,7 +895,7 @@ export function WalkTrackerBlock({ content, onChange, blockId = 'default' }: Wal
                   key={hour}
                   type="button"
                   onClick={() => {
-                    const sessionsInHour = (data.sessions || []).filter((s) => {
+                    const sessionsInHour = allSessions.filter((s) => {
                       const segs = splitWalkSessionByHours(s);
                       return segs.some((seg) => seg.date === selectedDayForSummary && seg.hour === hour);
                     });

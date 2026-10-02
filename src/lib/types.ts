@@ -204,7 +204,8 @@ export type WalkFeeling = 'very_tired' | 'tired' | 'okay' | 'good' | 'energized'
 export interface WalkSession {
   id: string;
   user_id?: string;
-  tracker_id?: string; // or page_id
+  page_id?: string;
+  tracker_id?: string;
   started_at: string; // ISO string
   ended_at: string; // ISO string
   duration_seconds: number;

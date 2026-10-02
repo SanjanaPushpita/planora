@@ -4,7 +4,8 @@ import {
   PageBlock, 
   UserProfile, 
   PlannerBackup,
-  PageType 
+  PageType,
+  WalkSession
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../../supabase/client';
 import { localPlannerStorage } from './local-storage';
@@ -271,6 +272,175 @@ export class SupabasePlannerStorage implements IPlannerStorage {
 
   async reorderBlocks(pageId: string, orderedBlockIds: string[]): Promise<void> {
     return this.fallback.reorderBlocks(pageId, orderedBlockIds);
+  }
+
+  // Walk Sessions (Supabase Durable Storage + Offline Queue + Fallback)
+  async getWalkSessions(params?: { pageId?: string; startDate?: string; endDate?: string }): Promise<WalkSession[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getWalkSessions(params);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return this.fallback.getWalkSessions(params);
+      }
+
+      let query = supabase
+        .from('walk_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('started_at', { ascending: false });
+
+      if (params?.pageId) {
+        query = query.eq('page_id', params.pageId);
+      }
+      if (params?.startDate) {
+        query = query.gte('date', params.startDate);
+      }
+      if (params?.endDate) {
+        query = query.lte('date', params.endDate);
+      }
+
+      const { data, error } = await query;
+      if (error || !data) {
+        console.warn('[Supabase getWalkSessions error, using fallback]', error);
+        return this.fallback.getWalkSessions(params);
+      }
+
+      // Sync returned sessions into local storage for zero-latency offline read
+      if (Array.isArray(data)) {
+        for (const sess of data) {
+          await this.fallback.saveWalkSession(sess);
+        }
+      }
+
+      return data as WalkSession[];
+    } catch (err) {
+      console.error('[Supabase getWalkSessions exception]', err);
+      return this.fallback.getWalkSessions(params);
+    }
+  }
+
+  async saveWalkSession(session: WalkSession): Promise<WalkSession> {
+    // 1. Always save locally first as immediate durable backup
+    const localSession = await this.fallback.saveWalkSession(session);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSession;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return localSession;
+      }
+
+      const payload = {
+        id: session.id,
+        user_id: user.id,
+        page_id: session.page_id || (session as any).tracker_id || null,
+        started_at: session.started_at,
+        ended_at: session.ended_at,
+        duration_seconds: session.duration_seconds,
+        target_duration_seconds: session.target_duration_seconds || 300,
+        date: session.date,
+        hour: session.hour,
+        feeling: session.feeling || null,
+        note: session.note || null,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('walk_sessions')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveWalkSession error]', error);
+        // Track in pending sync queue
+        try {
+          const pending = JSON.parse(localStorage.getItem('planora_walk_pending_sync') || '[]');
+          if (!pending.some((s: WalkSession) => s.id === session.id)) {
+            pending.push(session);
+            localStorage.setItem('planora_walk_pending_sync', JSON.stringify(pending));
+          }
+        } catch {}
+        return localSession;
+      }
+
+      // If success, remove from pending sync if was present
+      try {
+        const pending = JSON.parse(localStorage.getItem('planora_walk_pending_sync') || '[]');
+        const filtered = pending.filter((s: WalkSession) => s.id !== session.id);
+        localStorage.setItem('planora_walk_pending_sync', JSON.stringify(filtered));
+      } catch {}
+
+      return (data as WalkSession) || localSession;
+    } catch (err) {
+      console.error('[Supabase saveWalkSession catch]', err);
+      return localSession;
+    }
+  }
+
+  async updateWalkSession(id: string, updates: Partial<WalkSession>): Promise<WalkSession> {
+    const localUpdated = await this.fallback.updateWalkSession(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('walk_sessions')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateWalkSession error]', error);
+        return localUpdated;
+      }
+
+      return data as WalkSession;
+    } catch (err) {
+      console.error('[Supabase updateWalkSession exception]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteWalkSession(id: string): Promise<void> {
+    await this.fallback.deleteWalkSession(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('walk_sessions')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('[Supabase deleteWalkSession error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteWalkSession exception]', err);
+    }
   }
 
   async exportData(): Promise<PlannerBackup> {
