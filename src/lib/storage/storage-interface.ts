@@ -8,6 +8,8 @@ import {
   LearningSprint,
   KnowledgeItem,
   VocabularyItem,
+  InboxItem,
+  MonthlyReview,
   FocusSession,
   ResearchPaper,
   WeeklyReview,
@@ -67,10 +69,28 @@ export interface IPlannerStorage {
   updateKnowledgeItem(id: string, updates: Partial<KnowledgeItem>): Promise<KnowledgeItem>;
   deleteKnowledgeItem(id: string): Promise<void>;
 
-  // Vocabulary Items
-  getVocabularyItems(): Promise<VocabularyItem[]>;
+  // Vocabulary Items (Durable Supabase + Spaced Repetition + Trash)
+  getVocabularyItems(includeTrash?: boolean): Promise<VocabularyItem[]>;
+  getVocabularyItemById(id: string): Promise<VocabularyItem | null>;
   saveVocabularyItem(item: VocabularyItem): Promise<VocabularyItem>;
-  deleteVocabularyItem(id: string): Promise<void>;
+  updateVocabularyItem(id: string, updates: Partial<VocabularyItem>): Promise<VocabularyItem>;
+  deleteVocabularyItem(id: string, permanent?: boolean): Promise<void>;
+  restoreVocabularyItem(id: string): Promise<void>;
+
+  // Inbox / Quick Capture (Durable Supabase + Offline Queue + Organize)
+  getInboxItems(includeArchived?: boolean, includeTrash?: boolean): Promise<InboxItem[]>;
+  getInboxItemById(id: string): Promise<InboxItem | null>;
+  saveInboxItem(item: InboxItem): Promise<InboxItem>;
+  updateInboxItem(id: string, updates: Partial<InboxItem>): Promise<InboxItem>;
+  deleteInboxItem(id: string, permanent?: boolean): Promise<void>;
+  restoreInboxItem(id: string): Promise<void>;
+
+  // Monthly Reviews (Month in Review)
+  getMonthlyReviews(): Promise<MonthlyReview[]>;
+  getMonthlyReviewByMonth(monthKey: string): Promise<MonthlyReview | null>;
+  saveMonthlyReview(review: MonthlyReview): Promise<MonthlyReview>;
+  updateMonthlyReview(id: string, updates: Partial<MonthlyReview>): Promise<MonthlyReview>;
+  deleteMonthlyReview(id: string): Promise<void>;
 
   // Focus Sessions / Deep Work (Durable Supabase + Recovery)
   getFocusSessions(): Promise<FocusSession[]>;

@@ -24,7 +24,10 @@ import {
   Target,
   Layers,
   Compass,
-  Flag
+  Flag,
+  Inbox as InboxIcon,
+  Brain,
+  BarChart3
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -44,18 +47,31 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
     profile, 
     learningSprints, 
     knowledgeItems,
+    vocabularyItems,
+    trashVocabulary,
+    inboxItems,
+    trashInboxItems,
     focusSessions,
     researchPapers,
     goals,
     weeklyReviews
   } = usePlanner();
 
+  const unorganizedInboxCount = inboxItems?.filter(i => !i.is_organized && !i.is_trash && !i.is_archived).length || 0;
+  const wordsDueCount = vocabularyItems?.filter(v => !v.is_trash && (!v.next_review_at || new Date(v.next_review_at) <= new Date() || v.status === 'needs_review')).length || 0;
   const activePapersCount = researchPapers?.filter(p => !p.is_trash).length;
   const activeGoalsCount = goals?.filter(g => !g.is_trash && g.status !== 'completed').length;
-  const totalTrashCount = trashPages.length + (trashGoals?.length || 0) + (researchPapers?.filter(p => p.is_trash).length || 0);
+  const totalTrashCount = trashPages.length + 
+    (trashGoals?.length || 0) + 
+    (researchPapers?.filter(p => p.is_trash).length || 0) +
+    (trashInboxItems?.length || 0) +
+    (trashVocabulary?.length || 0);
 
   const mainNav = [
     { name: 'Dashboard', href: '/', icon: Home },
+    { name: 'Inbox', href: '/inbox', icon: InboxIcon, count: unorganizedInboxCount },
+    { name: 'Vocabulary', href: '/vocabulary', icon: Brain, count: wordsDueCount || vocabularyItems?.filter(v => !v.is_trash).length },
+    { name: 'Monthly Report', href: '/monthly-report', icon: BarChart3 },
     { name: 'Weekly Review', href: '/weekly-review', icon: Compass },
     { name: 'Goals', href: '/goals', icon: Flag, count: activeGoalsCount },
     { name: 'Calendar', href: '/calendar', icon: Calendar },

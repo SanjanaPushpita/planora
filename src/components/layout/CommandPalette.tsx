@@ -31,9 +31,10 @@ interface CommandPaletteProps {
   isOpen: boolean;
   onClose: () => void;
   onOpenNewPageModal: () => void;
+  onOpenQuickCapture?: () => void;
 }
 
-export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandPaletteProps) {
+export function CommandPalette({ isOpen, onClose, onOpenNewPageModal, onOpenQuickCapture }: CommandPaletteProps) {
   const router = useRouter();
   const { searchAll } = usePlanner();
   const { toggleColorMode, setTheme, colorMode } = useTheme();
@@ -73,7 +74,13 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
     onClose();
     if (r.url) {
       router.push(r.url);
-    } else if (r.pageId === 'vault' || r.type === 'knowledge' || r.type === 'vocabulary') {
+    } else if (r.type === 'inbox') {
+      router.push('/inbox');
+    } else if (r.type === 'vocabulary') {
+      router.push('/vocabulary');
+    } else if (r.type === 'monthly_review') {
+      router.push('/monthly-report');
+    } else if (r.pageId === 'vault' || r.type === 'knowledge') {
       router.push('/vault');
     } else if (r.pageId === 'sprint' || r.type === 'sprint') {
       router.push('/sprint');
@@ -176,6 +183,43 @@ export function CommandPalette({ isOpen, onClose, onOpenNewPageModal }: CommandP
               Quick Actions
             </div>
             <div className="space-y-1 mt-1">
+              {onOpenQuickCapture && (
+                <button
+                  onClick={() => handleAction(onOpenQuickCapture)}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--accent)] font-medium"
+                >
+                  <Plus className="w-4 h-4 text-[var(--accent)]" />
+                  <span>+ Quick Capture (Ctrl/Cmd + Shift + Space)</span>
+                </button>
+              )}
+              <button
+                onClick={() => handleAction(() => router.push('/inbox'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <FileText className="w-4 h-4 text-emerald-600" />
+                <span>Open Inbox / Captured Ideas</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/vocabulary'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <BookOpen className="w-4 h-4 text-indigo-500" />
+                <span>Open Vocabulary Builder</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/vocabulary?review=1'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>Review Vocabulary Flashcards</span>
+              </button>
+              <button
+                onClick={() => handleAction(() => router.push('/monthly-report'))}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"
+              >
+                <Calendar className="w-4 h-4 text-teal-600" />
+                <span>Open Monthly Personal Report</span>
+              </button>
               <button
                 onClick={() => handleAction(() => router.push('/weekly-review'))}
                 className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-left hover:bg-[var(--bg-paper-hover)] transition-colors text-sm text-[var(--text-primary)]"

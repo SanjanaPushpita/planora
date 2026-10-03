@@ -48,7 +48,9 @@ export default function DashboardPage() {
     walkSessions,
     learningSprints,
     goals,
-    weeklyReviews
+    weeklyReviews,
+    inboxItems,
+    vocabularyItems
   } = usePlanner();
 
   const [isNewPageModalOpen, setIsNewPageModalOpen] = useState(false);
@@ -486,6 +488,82 @@ export default function DashboardPage() {
             Open Papers
           </button>
         </div>
+      </div>
+
+      {/* QUICK CAPTURE INBOX & VOCABULARY & MONTHLY REPORT ROW */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {/* INBOX WIDGET */}
+        {(() => {
+          const unorganizedCount = (inboxItems || []).filter(i => !i.is_trash && !i.is_organized && !i.is_archived).length;
+          return (
+            <div className="journal-paper p-4 border border-[var(--border-color)] flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">
+                  <FileText className="w-3.5 h-3.5" />
+                  <span>Inbox</span>
+                </div>
+                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                  {unorganizedCount > 0 ? `${unorganizedCount} unorganized item${unorganizedCount > 1 ? 's' : ''}` : 'All caught up ✓'}
+                </div>
+              </div>
+              <button
+                onClick={() => router.push('/inbox')}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-primary)] transition-colors"
+              >
+                Open Inbox
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* VOCABULARY WIDGET */}
+        {(() => {
+          const today = new Date().toISOString().split('T')[0];
+          const dueCount = (vocabularyItems || []).filter(v => !v.is_trash && (!v.next_review_at || v.next_review_at <= today)).length;
+          return (
+            <div className="journal-paper p-4 border border-[var(--border-color)] flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-indigo-700 dark:text-indigo-400">
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>Vocabulary</span>
+                </div>
+                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                  {dueCount > 0 ? `${dueCount} word${dueCount > 1 ? 's' : ''} due today` : 'No reviews due'}
+                </div>
+              </div>
+              <button
+                onClick={() => router.push(dueCount > 0 ? '/vocabulary?review=1' : '/vocabulary')}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-primary)] transition-colors"
+              >
+                {dueCount > 0 ? 'Review' : 'Open Vocab'}
+              </button>
+            </div>
+          );
+        })()}
+
+        {/* MONTH IN REVIEW WIDGET */}
+        {(() => {
+          const currentMonthName = new Intl.DateTimeFormat('en-US', { month: 'long' }).format(new Date());
+          return (
+            <div className="journal-paper p-4 border border-[var(--border-color)] flex items-center justify-between gap-3">
+              <div className="space-y-0.5 min-w-0">
+                <div className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-teal-700 dark:text-teal-400">
+                  <CalendarIcon className="w-3.5 h-3.5" />
+                  <span>Monthly Report</span>
+                </div>
+                <div className="text-xs font-bold text-[var(--text-primary)] truncate">
+                  {currentMonthName} progress
+                </div>
+              </div>
+              <button
+                onClick={() => router.push('/monthly-report')}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-primary)] transition-colors"
+              >
+                View Report
+              </button>
+            </div>
+          );
+        })()}
       </div>
 
       {/* ACTIVE GOALS SPOTLIGHT */}

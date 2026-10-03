@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 
 interface UnifiedTrashItem {
   id: string;
-  kind: 'page' | 'goal' | 'paper';
+  kind: 'page' | 'goal' | 'paper' | 'inbox' | 'vocabulary';
   title: string;
   typeLabel: string;
   icon: React.ReactNode;
@@ -20,13 +20,19 @@ export default function TrashPage() {
     trashPages, 
     trashGoals, 
     researchPapers,
+    trashInboxItems,
+    trashVocabulary,
     restoreFromTrash, 
     permanentlyDeletePage, 
     emptyTrash,
     restoreGoal,
     deleteGoal,
     restoreResearchPaper,
-    deleteResearchPaper
+    deleteResearchPaper,
+    restoreInboxItem,
+    deleteInboxItem,
+    restoreVocabularyItem,
+    deleteVocabularyItem
   } = usePlanner();
 
   const [showEmptyConfirm, setShowEmptyConfirm] = useState(false);
@@ -59,6 +65,22 @@ export default function TrashPage() {
       icon: <FileText className="w-5 h-5 text-amber-500" />,
       deletedAt: paper.updated_at,
     })),
+    ...trashInboxItems.map(inbox => ({
+      id: inbox.id,
+      kind: 'inbox' as const,
+      title: inbox.title || inbox.content.substring(0, 40),
+      typeLabel: `Inbox (${inbox.type})`,
+      icon: <FileText className="w-5 h-5 text-emerald-500" />,
+      deletedAt: inbox.updated_at,
+    })),
+    ...trashVocabulary.map(vocab => ({
+      id: vocab.id,
+      kind: 'vocabulary' as const,
+      title: vocab.word,
+      typeLabel: `Vocabulary (${vocab.category || 'General'})`,
+      icon: <Target className="w-5 h-5 text-violet-500" />,
+      deletedAt: vocab.updated_at,
+    })),
   ].sort((a, b) => new Date(b.deletedAt).getTime() - new Date(a.deletedAt).getTime());
 
   const handleRestore = async (item: UnifiedTrashItem) => {
@@ -68,6 +90,10 @@ export default function TrashPage() {
       await restoreGoal(item.id);
     } else if (item.kind === 'paper') {
       await restoreResearchPaper(item.id);
+    } else if (item.kind === 'inbox') {
+      await restoreInboxItem(item.id);
+    } else if (item.kind === 'vocabulary') {
+      await restoreVocabularyItem(item.id);
     }
   };
 
@@ -78,6 +104,10 @@ export default function TrashPage() {
       await deleteGoal(item.id, true);
     } else if (item.kind === 'paper') {
       await deleteResearchPaper(item.id, true);
+    } else if (item.kind === 'inbox') {
+      await deleteInboxItem(item.id, true);
+    } else if (item.kind === 'vocabulary') {
+      await deleteVocabularyItem(item.id, true);
     }
     setItemToDelete(null);
   };
@@ -89,6 +119,12 @@ export default function TrashPage() {
     }
     for (const p of trashedPapers) {
       await deleteResearchPaper(p.id, true);
+    }
+    for (const i of trashInboxItems) {
+      await deleteInboxItem(i.id, true);
+    }
+    for (const v of trashVocabulary) {
+      await deleteVocabularyItem(v.id, true);
     }
     setShowEmptyConfirm(false);
   };

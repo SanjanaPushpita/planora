@@ -18,6 +18,10 @@ import {
   LearningSprint,
   KnowledgeItem,
   VocabularyItem,
+  VocabularyReviewRating,
+  VocabularyStatus,
+  InboxItem,
+  MonthlyReview,
   FocusSession,
   ResearchPaper,
   WeeklyReview,
@@ -32,10 +36,56 @@ interface SearchResult {
   pageId?: string;
   pageTitle: string;
   pageIcon: string;
-  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary' | 'paper' | 'focus' | 'review' | 'goal' | 'milestone';
+  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary' | 'paper' | 'focus' | 'review' | 'goal' | 'milestone' | 'inbox' | 'monthly_review';
   title: string;
   subtitle?: string;
   url?: string;
+}
+
+export function calculateNextReview(
+  currentReviewCount: number,
+  currentInterval: number,
+  currentEase: number,
+  rating: VocabularyReviewRating
+): { nextReviewAt: string; intervalDays: number; easeFactor: number; status: VocabularyStatus } {
+  const now = new Date();
+  let ease = currentEase || 2.5;
+  let interval = currentInterval || 0;
+  let count = currentReviewCount || 0;
+  let status: VocabularyStatus = 'learning';
+
+  if (rating === 'again') {
+    interval = 1;
+    count = 0;
+    ease = Math.max(1.3, ease - 0.2);
+    status = 'needs_review';
+  } else if (rating === 'hard') {
+    interval = count === 0 ? 1 : Math.max(2, Math.round(interval * 1.2));
+    count += 1;
+    ease = Math.max(1.3, ease - 0.15);
+    status = 'learning';
+  } else if (rating === 'good') {
+    if (count === 0) interval = 1;
+    else if (count === 1) interval = 4;
+    else interval = Math.max(3, Math.round(interval * ease));
+    count += 1;
+    status = count >= 3 ? 'known' : 'learning';
+  } else if (rating === 'easy') {
+    if (count === 0) interval = 4;
+    else if (count === 1) interval = 8;
+    else interval = Math.max(7, Math.round(interval * (ease + 0.3) * 1.3));
+    count += 1;
+    ease = ease + 0.15;
+    status = 'known';
+  }
+
+  const nextDate = new Date(now.getTime() + interval * 24 * 60 * 60 * 1000);
+  return {
+    nextReviewAt: nextDate.toISOString(),
+    intervalDays: interval,
+    easeFactor: Number(ease.toFixed(2)),
+    status
+  };
 }
 
 interface StorageContextType {
@@ -49,6 +99,10 @@ interface StorageContextType {
   learningSprints: LearningSprint[];
   knowledgeItems: KnowledgeItem[];
   vocabularyItems: VocabularyItem[];
+  trashVocabulary: VocabularyItem[];
+  inboxItems: InboxItem[];
+  trashInboxItems: InboxItem[];
+  monthlyReviews: MonthlyReview[];
   focusSessions: FocusSession[];
   researchPapers: ResearchPaper[];
   weeklyReviews: WeeklyReview[];
@@ -59,6 +113,9 @@ interface StorageContextType {
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   walkSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   learningSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  vocabSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  inboxSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  monthlySaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   focusSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   paperSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   reviewSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
@@ -70,6 +127,9 @@ interface StorageContextType {
   refreshProfile: () => Promise<void>;
   refreshWalkSessions: () => Promise<void>;
   refreshLearningData: () => Promise<void>;
+  refreshVocabularyData: () => Promise<void>;
+  refreshInboxData: () => Promise<void>;
+  refreshMonthlyReviews: () => Promise<void>;
   refreshFocusData: () => Promise<void>;
   refreshPapersData: () => Promise<void>;
   refreshWeeklyReviews: () => Promise<void>;
@@ -84,7 +144,18 @@ interface StorageContextType {
   updateKnowledgeItem: (id: string, updates: Partial<KnowledgeItem>) => Promise<KnowledgeItem>;
   deleteKnowledgeItem: (id: string) => Promise<void>;
   saveVocabularyItem: (item: VocabularyItem) => Promise<VocabularyItem>;
-  deleteVocabularyItem: (id: string) => Promise<void>;
+  updateVocabularyItem: (id: string, updates: Partial<VocabularyItem>) => Promise<VocabularyItem>;
+  deleteVocabularyItem: (id: string, permanent?: boolean) => Promise<void>;
+  restoreVocabularyItem: (id: string) => Promise<void>;
+  reviewVocabularyWord: (id: string, rating: VocabularyReviewRating) => Promise<VocabularyItem>;
+  saveInboxItem: (item: InboxItem) => Promise<InboxItem>;
+  updateInboxItem: (id: string, updates: Partial<InboxItem>) => Promise<InboxItem>;
+  deleteInboxItem: (id: string, permanent?: boolean) => Promise<void>;
+  restoreInboxItem: (id: string) => Promise<void>;
+  organizeInboxItem: (id: string, destinationType: string, destinationMeta?: any) => Promise<void>;
+  saveMonthlyReview: (review: MonthlyReview) => Promise<MonthlyReview>;
+  updateMonthlyReview: (id: string, updates: Partial<MonthlyReview>) => Promise<MonthlyReview>;
+  deleteMonthlyReview: (id: string) => Promise<void>;
   saveFocusSession: (session: FocusSession) => Promise<FocusSession>;
   updateFocusSession: (id: string, updates: Partial<FocusSession>) => Promise<FocusSession>;
   deleteFocusSession: (id: string) => Promise<void>;
@@ -203,6 +274,58 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== 'undefined') {
       try {
         const cached = localStorage.getItem('planora_vocabulary_items');
+        if (cached) {
+          const parsed: VocabularyItem[] = JSON.parse(cached);
+          return parsed.filter(v => !v.is_trash);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [trashVocabulary, setTrashVocabulary] = useState<VocabularyItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_vocabulary_items');
+        if (cached) {
+          const parsed: VocabularyItem[] = JSON.parse(cached);
+          return parsed.filter(v => v.is_trash);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [inboxItems, setInboxItems] = useState<InboxItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_inbox_items');
+        if (cached) {
+          const parsed: InboxItem[] = JSON.parse(cached);
+          return parsed.filter(i => !i.is_trash);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [trashInboxItems, setTrashInboxItems] = useState<InboxItem[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_inbox_items');
+        if (cached) {
+          const parsed: InboxItem[] = JSON.parse(cached);
+          return parsed.filter(i => i.is_trash);
+        }
+      } catch {}
+    }
+    return [];
+  });
+
+  const [monthlyReviews, setMonthlyReviews] = useState<MonthlyReview[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_monthly_reviews');
         if (cached) return JSON.parse(cached);
       } catch {}
     }
@@ -288,6 +411,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [walkSaveStatus, setWalkSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [learningSaveStatus, setLearningSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [vocabSaveStatus, setVocabSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [inboxSaveStatus, setInboxSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [monthlySaveStatus, setMonthlySaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [focusSaveStatus, setFocusSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [paperSaveStatus, setPaperSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [reviewSaveStatus, setReviewSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
@@ -350,21 +476,62 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
 
   const refreshLearningData = useCallback(async () => {
     try {
-      const [sprints, items, words] = await Promise.all([
+      const [sprints, items] = await Promise.all([
         storage.getLearningSprints(),
         storage.getKnowledgeItems(),
-        storage.getVocabularyItems(),
       ]);
       setLearningSprints(sprints);
       setKnowledgeItems(items);
-      setVocabularyItems(words);
       if (typeof window !== 'undefined') {
         localStorage.setItem('planora_learning_sprints', JSON.stringify(sprints));
         localStorage.setItem('planora_knowledge_items', JSON.stringify(items));
-        localStorage.setItem('planora_vocabulary_items', JSON.stringify(words));
       }
     } catch (e) {
       console.error('Failed to load learning data', e);
+    }
+  }, [storage]);
+
+  const refreshVocabularyData = useCallback(async () => {
+    try {
+      const [activeWords, trashWords] = await Promise.all([
+        storage.getVocabularyItems(false),
+        storage.getVocabularyItems(true),
+      ]);
+      setVocabularyItems(activeWords.filter(v => !v.is_trash));
+      setTrashVocabulary(trashWords.filter(v => v.is_trash));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_vocabulary_items', JSON.stringify([...activeWords, ...trashWords]));
+      }
+    } catch (e) {
+      console.error('Failed to load vocabulary data', e);
+    }
+  }, [storage]);
+
+  const refreshInboxData = useCallback(async () => {
+    try {
+      const [activeItems, trashItems] = await Promise.all([
+        storage.getInboxItems(true, false),
+        storage.getInboxItems(true, true),
+      ]);
+      setInboxItems(activeItems.filter(i => !i.is_trash));
+      setTrashInboxItems(trashItems.filter(i => i.is_trash));
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_inbox_items', JSON.stringify([...activeItems, ...trashItems]));
+      }
+    } catch (e) {
+      console.error('Failed to load inbox data', e);
+    }
+  }, [storage]);
+
+  const refreshMonthlyReviews = useCallback(async () => {
+    try {
+      const list = await storage.getMonthlyReviews();
+      setMonthlyReviews(list);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_monthly_reviews', JSON.stringify(list));
+      }
+    } catch (e) {
+      console.error('Failed to load monthly reviews', e);
     }
   }, [storage]);
 
@@ -442,6 +609,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         refreshPages(), 
         refreshWalkSessions(), 
         refreshLearningData(),
+        refreshVocabularyData(),
+        refreshInboxData(),
+        refreshMonthlyReviews(),
         refreshFocusData(),
         refreshPapersData(),
         refreshWeeklyReviews(),
@@ -652,23 +822,241 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
 
   // Vocabulary Item Actions
   const saveVocabularyItem = async (item: VocabularyItem): Promise<VocabularyItem> => {
+    setVocabSaveStatus('saving');
     try {
       const saved = await storage.saveVocabularyItem(item);
       setVocabularyItems((prev) => [saved, ...prev.filter((v) => v.id !== saved.id && v.word.toLowerCase() !== saved.word.toLowerCase())]);
+      setVocabSaveStatus('saved');
+      setTimeout(() => setVocabSaveStatus('idle'), 2500);
       return saved;
     } catch (e) {
       console.error('Save vocabulary item error:', e);
       setVocabularyItems((prev) => [item, ...prev.filter((v) => v.id !== item.id)]);
+      setVocabSaveStatus('unsynced');
       throw e;
     }
   };
 
-  const deleteVocabularyItem = async (id: string): Promise<void> => {
+  const updateVocabularyItem = async (id: string, updates: Partial<VocabularyItem>): Promise<VocabularyItem> => {
+    setVocabSaveStatus('saving');
     try {
-      await storage.deleteVocabularyItem(id);
-      setVocabularyItems((prev) => prev.filter((v) => v.id !== id));
+      const updated = await storage.updateVocabularyItem(id, updates);
+      setVocabularyItems((prev) => prev.map((v) => (v.id === id ? updated : v)));
+      setVocabSaveStatus('saved');
+      setTimeout(() => setVocabSaveStatus('idle'), 2000);
+      return updated;
+    } catch (e) {
+      console.error('Update vocabulary item error:', e);
+      setVocabSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteVocabularyItem = async (id: string, permanent: boolean = false): Promise<void> => {
+    setVocabSaveStatus('saving');
+    try {
+      await storage.deleteVocabularyItem(id, permanent);
+      const target = vocabularyItems.find(v => v.id === id) || trashVocabulary.find(v => v.id === id);
+      if (permanent) {
+        setVocabularyItems((prev) => prev.filter((v) => v.id !== id));
+        setTrashVocabulary((prev) => prev.filter((v) => v.id !== id));
+      } else {
+        setVocabularyItems((prev) => prev.filter((v) => v.id !== id));
+        if (target) setTrashVocabulary((prev) => [{ ...target, is_trash: true }, ...prev.filter(v => v.id !== id)]);
+      }
+      setVocabSaveStatus('saved');
+      setTimeout(() => setVocabSaveStatus('idle'), 2000);
     } catch (e) {
       console.error('Delete vocabulary item error:', e);
+      setVocabSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const restoreVocabularyItem = async (id: string): Promise<void> => {
+    setVocabSaveStatus('saving');
+    try {
+      await storage.restoreVocabularyItem(id);
+      const target = trashVocabulary.find(v => v.id === id);
+      setTrashVocabulary((prev) => prev.filter((v) => v.id !== id));
+      if (target) {
+        setVocabularyItems((prev) => [{ ...target, is_trash: false }, ...prev.filter(v => v.id !== id)]);
+      }
+      setVocabSaveStatus('saved');
+      setTimeout(() => setVocabSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Restore vocabulary item error:', e);
+      setVocabSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const reviewVocabularyWord = async (id: string, rating: VocabularyReviewRating): Promise<VocabularyItem> => {
+    setVocabSaveStatus('saving');
+    try {
+      const word = vocabularyItems.find(v => v.id === id) || await storage.getVocabularyItemById(id);
+      if (!word) throw new Error(`Vocabulary item ${id} not found.`);
+
+      const reviewCalcs = calculateNextReview(
+        word.review_count || 0,
+        word.interval_days || 0,
+        word.ease_factor || 2.5,
+        rating
+      );
+
+      const updates: Partial<VocabularyItem> = {
+        last_reviewed_at: new Date().toISOString(),
+        next_review_at: reviewCalcs.nextReviewAt,
+        interval_days: reviewCalcs.intervalDays,
+        ease_factor: reviewCalcs.easeFactor,
+        status: reviewCalcs.status,
+        review_count: (word.review_count || 0) + 1,
+      };
+
+      const updated = await storage.updateVocabularyItem(id, updates);
+      setVocabularyItems((prev) => prev.map((v) => (v.id === id ? updated : v)));
+      setVocabSaveStatus('saved');
+      setTimeout(() => setVocabSaveStatus('idle'), 2000);
+      return updated;
+    } catch (e) {
+      console.error('Review vocabulary word error:', e);
+      setVocabSaveStatus('error');
+      throw e;
+    }
+  };
+
+  // Inbox / Quick Capture Actions
+  const saveInboxItem = async (item: InboxItem): Promise<InboxItem> => {
+    setInboxSaveStatus('saving');
+    try {
+      const saved = await storage.saveInboxItem(item);
+      setInboxItems((prev) => [saved, ...prev.filter((i) => i.id !== saved.id)]);
+      setInboxSaveStatus('saved');
+      setTimeout(() => setInboxSaveStatus('idle'), 2500);
+      return saved;
+    } catch (e) {
+      console.error('Save inbox item error:', e);
+      setInboxItems((prev) => [item, ...prev.filter((i) => i.id !== item.id)]);
+      setInboxSaveStatus('unsynced');
+      throw e;
+    }
+  };
+
+  const updateInboxItem = async (id: string, updates: Partial<InboxItem>): Promise<InboxItem> => {
+    setInboxSaveStatus('saving');
+    try {
+      const updated = await storage.updateInboxItem(id, updates);
+      setInboxItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+      setInboxSaveStatus('saved');
+      setTimeout(() => setInboxSaveStatus('idle'), 2000);
+      return updated;
+    } catch (e) {
+      console.error('Update inbox item error:', e);
+      setInboxSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteInboxItem = async (id: string, permanent: boolean = false): Promise<void> => {
+    setInboxSaveStatus('saving');
+    try {
+      await storage.deleteInboxItem(id, permanent);
+      const target = inboxItems.find(i => i.id === id) || trashInboxItems.find(i => i.id === id);
+      if (permanent) {
+        setInboxItems((prev) => prev.filter((i) => i.id !== id));
+        setTrashInboxItems((prev) => prev.filter((i) => i.id !== id));
+      } else {
+        setInboxItems((prev) => prev.filter((i) => i.id !== id));
+        if (target) setTrashInboxItems((prev) => [{ ...target, is_trash: true }, ...prev.filter(i => i.id !== id)]);
+      }
+      setInboxSaveStatus('saved');
+      setTimeout(() => setInboxSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Delete inbox item error:', e);
+      setInboxSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const restoreInboxItem = async (id: string): Promise<void> => {
+    setInboxSaveStatus('saving');
+    try {
+      await storage.restoreInboxItem(id);
+      const target = trashInboxItems.find(i => i.id === id);
+      setTrashInboxItems((prev) => prev.filter((i) => i.id !== id));
+      if (target) {
+        setInboxItems((prev) => [{ ...target, is_trash: false }, ...prev.filter(i => i.id !== id)]);
+      }
+      setInboxSaveStatus('saved');
+      setTimeout(() => setInboxSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Restore inbox item error:', e);
+      setInboxSaveStatus('error');
+      throw e;
+    }
+  };
+
+  const organizeInboxItem = async (id: string, destinationType: string, destinationMeta?: any): Promise<void> => {
+    setInboxSaveStatus('saving');
+    try {
+      const updates: Partial<InboxItem> = {
+        is_organized: true,
+        organized_into: destinationType,
+        organized_at: new Date().toISOString(),
+      };
+      const updated = await storage.updateInboxItem(id, updates);
+      setInboxItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+      setInboxSaveStatus('saved');
+      setTimeout(() => setInboxSaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Organize inbox item error:', e);
+      setInboxSaveStatus('error');
+      throw e;
+    }
+  };
+
+  // Monthly Review Actions
+  const saveMonthlyReview = async (review: MonthlyReview): Promise<MonthlyReview> => {
+    setMonthlySaveStatus('saving');
+    try {
+      const saved = await storage.saveMonthlyReview(review);
+      setMonthlyReviews((prev) => [saved, ...prev.filter((r) => r.id !== saved.id && r.month_key !== saved.month_key)]);
+      setMonthlySaveStatus('saved');
+      setTimeout(() => setMonthlySaveStatus('idle'), 2500);
+      return saved;
+    } catch (e) {
+      console.error('Save monthly review error:', e);
+      setMonthlyReviews((prev) => [review, ...prev.filter((r) => r.id !== review.id)]);
+      setMonthlySaveStatus('unsynced');
+      throw e;
+    }
+  };
+
+  const updateMonthlyReview = async (id: string, updates: Partial<MonthlyReview>): Promise<MonthlyReview> => {
+    setMonthlySaveStatus('saving');
+    try {
+      const updated = await storage.updateMonthlyReview(id, updates);
+      setMonthlyReviews((prev) => prev.map((r) => (r.id === id ? updated : r)));
+      setMonthlySaveStatus('saved');
+      setTimeout(() => setMonthlySaveStatus('idle'), 2000);
+      return updated;
+    } catch (e) {
+      console.error('Update monthly review error:', e);
+      setMonthlySaveStatus('error');
+      throw e;
+    }
+  };
+
+  const deleteMonthlyReview = async (id: string): Promise<void> => {
+    setMonthlySaveStatus('saving');
+    try {
+      await storage.deleteMonthlyReview(id);
+      setMonthlyReviews((prev) => prev.filter((r) => r.id !== id));
+      setMonthlySaveStatus('saved');
+      setTimeout(() => setMonthlySaveStatus('idle'), 2000);
+    } catch (e) {
+      console.error('Delete monthly review error:', e);
+      setMonthlySaveStatus('error');
       throw e;
     }
   };
@@ -1376,6 +1764,70 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // Search Vocabulary Items (Non-trashed)
+    for (const v of vocabularyItems) {
+      if (v.is_trash) continue;
+      const matchWord = v.word.toLowerCase().includes(q);
+      const matchMeaning = (v.meaning || '').toLowerCase().includes(q);
+      const matchExample = (v.example || '').toLowerCase().includes(q);
+      const matchCategory = (v.category || '').toLowerCase().includes(q);
+      const matchNotes = (v.my_notes || '').toLowerCase().includes(q);
+      const matchTags = (v.tags || []).some(t => t.toLowerCase().includes(q));
+
+      if (matchWord || matchMeaning || matchExample || matchCategory || matchNotes || matchTags) {
+        results.push({
+          id: `vocab-${v.id}`,
+          pageTitle: v.word,
+          pageIcon: '📖',
+          type: 'vocabulary',
+          title: v.word,
+          subtitle: `Vocabulary • ${v.meaning ? v.meaning.slice(0, 60) : v.category || 'Word'} (${v.status})`,
+          url: `/vocabulary?word=${encodeURIComponent(v.word)}`,
+        });
+      }
+    }
+
+    // Search Inbox Items (Non-trashed)
+    for (const item of inboxItems) {
+      if (item.is_trash) continue;
+      const matchContent = item.content.toLowerCase().includes(q);
+      const matchTitle = (item.title || '').toLowerCase().includes(q);
+      const matchTags = (item.tags || []).some(t => t.toLowerCase().includes(q));
+
+      if (matchContent || matchTitle || matchTags) {
+        results.push({
+          id: `inbox-${item.id}`,
+          pageTitle: item.title || item.content.slice(0, 30),
+          pageIcon: '📥',
+          type: 'inbox',
+          title: item.title || item.content.slice(0, 50),
+          subtitle: `Inbox • ${item.type.toUpperCase()}${item.is_organized ? ' (Organized)' : ''}`,
+          url: `/inbox?id=${item.id}`,
+        });
+      }
+    }
+
+    // Search Monthly Reviews
+    for (const mr of monthlyReviews) {
+      const label = mr.month_label || mr.month_key;
+      const matchLabel = label.toLowerCase().includes(q);
+      const matchNotes = (mr.notes || '').toLowerCase().includes(q);
+      const matchReflection = Object.values(mr.reflection || {}).some(val => typeof val === 'string' && val.toLowerCase().includes(q));
+      const matchNextMonth = Object.values(mr.next_month || {}).some(val => typeof val === 'string' && val.toLowerCase().includes(q));
+
+      if (matchLabel || matchNotes || matchReflection || matchNextMonth) {
+        results.push({
+          id: `monthly-${mr.id}`,
+          pageTitle: label,
+          pageIcon: '📊',
+          type: 'monthly_review',
+          title: `Month in Review: ${label}`,
+          subtitle: `Monthly Personal Report (${mr.status})`,
+          url: `/monthly-report?month=${mr.month_key}`,
+        });
+      }
+    }
+
     return results;
   };
 
@@ -1395,6 +1847,10 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         learningSprints,
         knowledgeItems,
         vocabularyItems,
+        trashVocabulary,
+        inboxItems,
+        trashInboxItems,
+        monthlyReviews,
         focusSessions,
         researchPapers,
         weeklyReviews,
@@ -1405,6 +1861,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         saveStatus,
         walkSaveStatus,
         learningSaveStatus,
+        vocabSaveStatus,
+        inboxSaveStatus,
+        monthlySaveStatus,
         focusSaveStatus,
         paperSaveStatus,
         reviewSaveStatus,
@@ -1416,6 +1875,9 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         refreshProfile,
         refreshWalkSessions,
         refreshLearningData,
+        refreshVocabularyData,
+        refreshInboxData,
+        refreshMonthlyReviews,
         refreshFocusData,
         refreshPapersData,
         refreshWeeklyReviews,
@@ -1430,7 +1892,18 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         updateKnowledgeItem,
         deleteKnowledgeItem,
         saveVocabularyItem,
+        updateVocabularyItem,
         deleteVocabularyItem,
+        restoreVocabularyItem,
+        reviewVocabularyWord,
+        saveInboxItem,
+        updateInboxItem,
+        deleteInboxItem,
+        restoreInboxItem,
+        organizeInboxItem,
+        saveMonthlyReview,
+        updateMonthlyReview,
+        deleteMonthlyReview,
         saveFocusSession,
         updateFocusSession,
         deleteFocusSession,

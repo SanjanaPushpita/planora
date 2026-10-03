@@ -471,13 +471,19 @@ function LearningSprintContent() {
   const handleSaveWordToVocabulary = async (w: LearningWord) => {
     try {
       await saveVocabularyItem({
-        id: `voc-${w.word.toLowerCase().replace(/\s+/g, '-')}`,
-        source_sprint_id: sprintId,
+        id: `voc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
         word: w.word,
         meaning: w.meaning,
         example: w.example,
-        category: sprintCategory,
-        tags: [sprintCategory.toLowerCase().replace(/\s+/g, '-')],
+        category: sprintCategory || 'Sprint Learning',
+        tags: [sprintCategory ? sprintCategory.toLowerCase().replace(/\s+/g, '-') : 'sprint'],
+        source_type: 'sprint',
+        source_sprint_id: sprintId,
+        source_title: sprintTopic,
+        status: 'new',
+        review_count: 0,
+        ease_factor: 2.5,
+        interval_days: 0,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });

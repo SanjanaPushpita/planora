@@ -9,6 +9,8 @@ import {
   LearningSprint,
   KnowledgeItem,
   VocabularyItem,
+  InboxItem,
+  MonthlyReview,
   FocusSession,
   ResearchPaper,
   WeeklyReview,
@@ -781,25 +783,32 @@ export class SupabasePlannerStorage implements IPlannerStorage {
     }
   }
 
-  // Vocabulary Items
-  async getVocabularyItems(): Promise<VocabularyItem[]> {
+  // Vocabulary Items (Durable Supabase + Spaced Repetition + Trash)
+  async getVocabularyItems(includeTrash: boolean = false): Promise<VocabularyItem[]> {
     if (!isSupabaseConfigured || !supabase) {
-      return this.fallback.getVocabularyItems();
+      return this.fallback.getVocabularyItems(includeTrash);
     }
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return this.fallback.getVocabularyItems();
+      if (!user) return this.fallback.getVocabularyItems(includeTrash);
 
-      const { data, error } = await supabase
+      let query = supabase
         .from('vocabulary_items')
         .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+        .eq('user_id', user.id);
+
+      if (includeTrash) {
+        query = query.eq('is_trash', true);
+      } else {
+        query = query.eq('is_trash', false);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error || !data) {
         console.warn('[Supabase getVocabularyItems error, using fallback]', error);
-        return this.fallback.getVocabularyItems();
+        return this.fallback.getVocabularyItems(includeTrash);
       }
 
       if (Array.isArray(data)) {
@@ -811,7 +820,30 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       return data as VocabularyItem[];
     } catch (err) {
       console.error('[Supabase getVocabularyItems exception]', err);
-      return this.fallback.getVocabularyItems();
+      return this.fallback.getVocabularyItems(includeTrash);
+    }
+  }
+
+  async getVocabularyItemById(id: string): Promise<VocabularyItem | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getVocabularyItemById(id);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getVocabularyItemById(id);
+
+      const { data, error } = await supabase
+        .from('vocabulary_items')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) return this.fallback.getVocabularyItemById(id);
+      return data as VocabularyItem;
+    } catch {
+      return this.fallback.getVocabularyItemById(id);
     }
   }
 
@@ -827,15 +859,32 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       if (!user) return localSaved;
 
       const payload = {
-        id: item.id,
+        id: localSaved.id,
         user_id: user.id,
-        source_knowledge_id: item.source_knowledge_id || null,
-        source_sprint_id: item.source_sprint_id || null,
-        word: item.word,
-        meaning: item.meaning,
-        example: item.example || null,
-        category: item.category || 'General',
-        tags: item.tags || [],
+        source_knowledge_id: localSaved.source_knowledge_id || null,
+        source_sprint_id: localSaved.source_sprint_id || null,
+        source_paper_id: localSaved.source_paper_id || null,
+        source_type: localSaved.source_type || 'custom',
+        source_title: localSaved.source_title || '',
+        word: localSaved.word,
+        meaning: localSaved.meaning || '',
+        example: localSaved.example || null,
+        synonyms: localSaved.synonyms || [],
+        antonyms: localSaved.antonyms || [],
+        part_of_speech: localSaved.part_of_speech || '',
+        pronunciation: localSaved.pronunciation || '',
+        category: localSaved.category || 'General',
+        tags: localSaved.tags || [],
+        my_notes: localSaved.my_notes || '',
+        is_favorite: Boolean(localSaved.is_favorite),
+        is_trash: Boolean(localSaved.is_trash),
+        last_reviewed_at: localSaved.last_reviewed_at || null,
+        next_review_at: localSaved.next_review_at || null,
+        review_count: localSaved.review_count || 0,
+        interval_days: localSaved.interval_days || 0,
+        ease_factor: localSaved.ease_factor || 2.5,
+        status: localSaved.status || 'new',
+        created_at: localSaved.created_at,
         updated_at: new Date().toISOString(),
       };
 
@@ -857,8 +906,456 @@ export class SupabasePlannerStorage implements IPlannerStorage {
     }
   }
 
-  async deleteVocabularyItem(id: string): Promise<void> {
-    await this.fallback.deleteVocabularyItem(id);
+  async updateVocabularyItem(id: string, updates: Partial<VocabularyItem>): Promise<VocabularyItem> {
+    const localUpdated = await this.fallback.updateVocabularyItem(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('vocabulary_items')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateVocabularyItem error]', error);
+        return localUpdated;
+      }
+
+      return data as VocabularyItem;
+    } catch (err) {
+      console.error('[Supabase updateVocabularyItem catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteVocabularyItem(id: string, permanent: boolean = false): Promise<void> {
+    await this.fallback.deleteVocabularyItem(id, permanent);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      if (permanent) {
+        const { error } = await supabase
+          .from('vocabulary_items')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase deleteVocabularyItem hard error]', error);
+      } else {
+        const { error } = await supabase
+          .from('vocabulary_items')
+          .update({
+            is_trash: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase deleteVocabularyItem soft error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteVocabularyItem catch]', err);
+    }
+  }
+
+  async restoreVocabularyItem(id: string): Promise<void> {
+    await this.fallback.restoreVocabularyItem(id);
+
+    if (!isSupabaseConfigured || !supabase) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('vocabulary_items')
+        .update({
+          is_trash: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase restoreVocabularyItem error]', error);
+    } catch (err) {
+      console.error('[Supabase restoreVocabularyItem catch]', err);
+    }
+  }
+
+  // Inbox / Quick Capture Items (Durable Supabase + Offline Queue + Organize)
+  async getInboxItems(includeArchived: boolean = false, includeTrash: boolean = false): Promise<InboxItem[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getInboxItems(includeArchived, includeTrash);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getInboxItems(includeArchived, includeTrash);
+
+      let query = supabase
+        .from('inbox_items')
+        .select('*')
+        .eq('user_id', user.id);
+
+      if (includeTrash) {
+        query = query.eq('is_trash', true);
+      } else {
+        query = query.eq('is_trash', false);
+        if (!includeArchived) {
+          query = query.eq('is_archived', false);
+        }
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getInboxItems error, using fallback]', error);
+        return this.fallback.getInboxItems(includeArchived, includeTrash);
+      }
+
+      if (Array.isArray(data)) {
+        for (const item of data) {
+          await this.fallback.saveInboxItem(item);
+        }
+      }
+
+      return data as InboxItem[];
+    } catch (err) {
+      console.error('[Supabase getInboxItems exception]', err);
+      return this.fallback.getInboxItems(includeArchived, includeTrash);
+    }
+  }
+
+  async getInboxItemById(id: string): Promise<InboxItem | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getInboxItemById(id);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getInboxItemById(id);
+
+      const { data, error } = await supabase
+        .from('inbox_items')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) return this.fallback.getInboxItemById(id);
+      return data as InboxItem;
+    } catch {
+      return this.fallback.getInboxItemById(id);
+    }
+  }
+
+  async saveInboxItem(item: InboxItem): Promise<InboxItem> {
+    const localSaved = await this.fallback.saveInboxItem(item);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: localSaved.id,
+        user_id: user.id,
+        content: localSaved.content,
+        title: localSaved.title || '',
+        type: localSaved.type || 'note',
+        tags: localSaved.tags || [],
+        due_date: localSaved.due_date || null,
+        url: localSaved.url || null,
+        priority: localSaved.priority || 'medium',
+        related_goal_id: localSaved.related_goal_id || null,
+        related_paper_id: localSaved.related_paper_id || null,
+        related_knowledge_id: localSaved.related_knowledge_id || null,
+        is_organized: Boolean(localSaved.is_organized),
+        organized_into: localSaved.organized_into || null,
+        organized_at: localSaved.organized_at || null,
+        is_archived: Boolean(localSaved.is_archived),
+        is_trash: Boolean(localSaved.is_trash),
+        is_completed: Boolean(localSaved.is_completed),
+        created_at: localSaved.created_at,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('inbox_items')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveInboxItem error]', error);
+        return localSaved;
+      }
+
+      return (data as InboxItem) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveInboxItem catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateInboxItem(id: string, updates: Partial<InboxItem>): Promise<InboxItem> {
+    const localUpdated = await this.fallback.updateInboxItem(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('inbox_items')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateInboxItem error]', error);
+        return localUpdated;
+      }
+
+      return data as InboxItem;
+    } catch (err) {
+      console.error('[Supabase updateInboxItem catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteInboxItem(id: string, permanent: boolean = false): Promise<void> {
+    await this.fallback.deleteInboxItem(id, permanent);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      if (permanent) {
+        const { error } = await supabase
+          .from('inbox_items')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase deleteInboxItem hard error]', error);
+      } else {
+        const { error } = await supabase
+          .from('inbox_items')
+          .update({
+            is_trash: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', id)
+          .eq('user_id', user.id);
+
+        if (error) console.error('[Supabase deleteInboxItem soft error]', error);
+      }
+    } catch (err) {
+      console.error('[Supabase deleteInboxItem catch]', err);
+    }
+  }
+
+  async restoreInboxItem(id: string): Promise<void> {
+    await this.fallback.restoreInboxItem(id);
+
+    if (!isSupabaseConfigured || !supabase) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('inbox_items')
+        .update({
+          is_trash: false,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase restoreInboxItem error]', error);
+    } catch (err) {
+      console.error('[Supabase restoreInboxItem catch]', err);
+    }
+  }
+
+  // Monthly Reviews
+  async getMonthlyReviews(): Promise<MonthlyReview[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getMonthlyReviews();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getMonthlyReviews();
+
+      const { data, error } = await supabase
+        .from('monthly_reviews')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('year', { ascending: false })
+        .order('month_number', { ascending: false });
+
+      if (error || !data) {
+        console.warn('[Supabase getMonthlyReviews error, using fallback]', error);
+        return this.fallback.getMonthlyReviews();
+      }
+
+      if (Array.isArray(data)) {
+        for (const review of data) {
+          await this.fallback.saveMonthlyReview(review);
+        }
+      }
+
+      return data as MonthlyReview[];
+    } catch (err) {
+      console.error('[Supabase getMonthlyReviews exception]', err);
+      return this.fallback.getMonthlyReviews();
+    }
+  }
+
+  async getMonthlyReviewByMonth(monthKey: string): Promise<MonthlyReview | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getMonthlyReviewByMonth(monthKey);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getMonthlyReviewByMonth(monthKey);
+
+      const { data, error } = await supabase
+        .from('monthly_reviews')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('month_key', monthKey)
+        .single();
+
+      if (error || !data) return this.fallback.getMonthlyReviewByMonth(monthKey);
+      return data as MonthlyReview;
+    } catch {
+      return this.fallback.getMonthlyReviewByMonth(monthKey);
+    }
+  }
+
+  async saveMonthlyReview(review: MonthlyReview): Promise<MonthlyReview> {
+    const localSaved = await this.fallback.saveMonthlyReview(review);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const payload = {
+        id: localSaved.id,
+        user_id: user.id,
+        month_key: localSaved.month_key,
+        month_label: localSaved.month_label || '',
+        year: localSaved.year,
+        month_number: localSaved.month_number,
+        rating_overall: localSaved.rating_overall || 0,
+        rating_productivity: localSaved.rating_productivity || 0,
+        rating_energy: localSaved.rating_energy || 'medium',
+        rating_focus: localSaved.rating_focus || 0,
+        reflection: localSaved.reflection || {},
+        next_month: localSaved.next_month || {},
+        stats_snapshot: localSaved.stats_snapshot || {},
+        notes: localSaved.notes || '',
+        status: localSaved.status || 'draft',
+        created_at: localSaved.created_at,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data, error } = await supabase
+        .from('monthly_reviews')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('[Supabase saveMonthlyReview error]', error);
+        return localSaved;
+      }
+
+      return (data as MonthlyReview) || localSaved;
+    } catch (err) {
+      console.error('[Supabase saveMonthlyReview catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateMonthlyReview(id: string, updates: Partial<MonthlyReview>): Promise<MonthlyReview> {
+    const localUpdated = await this.fallback.updateMonthlyReview(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('monthly_reviews')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateMonthlyReview error]', error);
+        return localUpdated;
+      }
+
+      return data as MonthlyReview;
+    } catch (err) {
+      console.error('[Supabase updateMonthlyReview catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteMonthlyReview(id: string): Promise<void> {
+    await this.fallback.deleteMonthlyReview(id);
 
     if (!isSupabaseConfigured || !supabase) {
       return;
@@ -869,16 +1366,14 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       if (!user) return;
 
       const { error } = await supabase
-        .from('vocabulary_items')
+        .from('monthly_reviews')
         .delete()
         .eq('id', id)
         .eq('user_id', user.id);
 
-      if (error) {
-        console.error('[Supabase deleteVocabularyItem error]', error);
-      }
+      if (error) console.error('[Supabase deleteMonthlyReview error]', error);
     } catch (err) {
-      console.error('[Supabase deleteVocabularyItem catch]', err);
+      console.error('[Supabase deleteMonthlyReview catch]', err);
     }
   }
 

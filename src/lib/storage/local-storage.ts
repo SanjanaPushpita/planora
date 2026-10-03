@@ -9,6 +9,8 @@ import {
   LearningSprint,
   KnowledgeItem,
   VocabularyItem,
+  InboxItem,
+  MonthlyReview,
   FocusSession,
   ResearchPaper,
   WeeklyReview,
@@ -31,6 +33,10 @@ const STORAGE_KEYS = {
   KNOWLEDGE_ITEMS: 'planora_knowledge_items',
   VOCABULARY_ITEMS: 'planora_vocabulary_items',
   LEARNING_PENDING_SYNC: 'planora_learning_pending_sync',
+  INBOX_ITEMS: 'planora_inbox_items',
+  INBOX_PENDING_SYNC: 'planora_inbox_pending_sync',
+  MONTHLY_REVIEWS: 'planora_monthly_reviews',
+  MONTHLY_PENDING_SYNC: 'planora_monthly_pending_sync',
   FOCUS_SESSIONS: 'planora_focus_sessions',
   RESEARCH_PAPERS: 'planora_research_papers',
   FOCUS_PENDING_SYNC: 'planora_focus_pending_sync',
@@ -580,22 +586,42 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, items.filter(i => i.id !== id));
   }
 
-  // Vocabulary Items
-  async getVocabularyItems(): Promise<VocabularyItem[]> {
+  // Vocabulary Items (Spaced Repetition & Trash)
+  async getVocabularyItems(includeTrash: boolean = false): Promise<VocabularyItem[]> {
     this.ensureInitialized();
     const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
-    return words.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    return words
+      .filter(w => includeTrash ? Boolean(w.is_trash) : !w.is_trash)
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async getVocabularyItemById(id: string): Promise<VocabularyItem | null> {
+    this.ensureInitialized();
+    const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    return words.find(w => w.id === id) || null;
   }
 
   async saveVocabularyItem(item: VocabularyItem): Promise<VocabularyItem> {
     this.ensureInitialized();
     const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
-    const existingIndex = words.findIndex(w => w.id === item.id || w.word.toLowerCase() === item.word.toLowerCase());
+    const existingIndex = words.findIndex(w => w.id === item.id || (item.id === '' && w.word.toLowerCase() === item.word.toLowerCase()));
 
     const fullWord: VocabularyItem = {
       ...item,
       id: item.id || generateId(),
+      synonyms: item.synonyms || [],
+      antonyms: item.antonyms || [],
+      part_of_speech: item.part_of_speech || '',
+      pronunciation: item.pronunciation || '',
+      category: item.category || 'General',
       tags: item.tags || [],
+      my_notes: item.my_notes || '',
+      is_favorite: Boolean(item.is_favorite),
+      is_trash: Boolean(item.is_trash),
+      review_count: typeof item.review_count === 'number' ? item.review_count : 0,
+      interval_days: typeof item.interval_days === 'number' ? item.interval_days : 0,
+      ease_factor: typeof item.ease_factor === 'number' ? item.ease_factor : 2.5,
+      status: item.status || 'new',
       created_at: item.created_at || new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -610,10 +636,210 @@ export class LocalPlannerStorage implements IPlannerStorage {
     return fullWord;
   }
 
-  async deleteVocabularyItem(id: string): Promise<void> {
+  async updateVocabularyItem(id: string, updates: Partial<VocabularyItem>): Promise<VocabularyItem> {
     this.ensureInitialized();
     const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
-    this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words.filter(w => w.id !== id));
+    const index = words.findIndex(w => w.id === id);
+    if (index === -1) {
+      throw new Error(`Vocabulary item ${id} not found.`);
+    }
+
+    const updated: VocabularyItem = {
+      ...words[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    words[index] = updated;
+    this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words);
+    return updated;
+  }
+
+  async deleteVocabularyItem(id: string, permanent: boolean = false): Promise<void> {
+    this.ensureInitialized();
+    const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    if (permanent) {
+      this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words.filter(w => w.id !== id));
+    } else {
+      const index = words.findIndex(w => w.id === id);
+      if (index >= 0) {
+        words[index].is_trash = true;
+        words[index].updated_at = new Date().toISOString();
+        this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words);
+      }
+    }
+  }
+
+  async restoreVocabularyItem(id: string): Promise<void> {
+    this.ensureInitialized();
+    const words = this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    const index = words.findIndex(w => w.id === id);
+    if (index >= 0) {
+      words[index].is_trash = false;
+      words[index].updated_at = new Date().toISOString();
+      this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, words);
+    }
+  }
+
+  // Inbox / Quick Capture Items
+  async getInboxItems(includeArchived: boolean = false, includeTrash: boolean = false): Promise<InboxItem[]> {
+    this.ensureInitialized();
+    const items = this.getStored<InboxItem[]>(STORAGE_KEYS.INBOX_ITEMS, []);
+    return items
+      .filter(item => {
+        if (includeTrash) return Boolean(item.is_trash);
+        if (item.is_trash) return false;
+        if (!includeArchived && item.is_archived) return false;
+        return true;
+      })
+      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  async getInboxItemById(id: string): Promise<InboxItem | null> {
+    this.ensureInitialized();
+    const items = this.getStored<InboxItem[]>(STORAGE_KEYS.INBOX_ITEMS, []);
+    return items.find(i => i.id === id) || null;
+  }
+
+  async saveInboxItem(item: InboxItem): Promise<InboxItem> {
+    this.ensureInitialized();
+    const items = this.getStored<InboxItem[]>(STORAGE_KEYS.INBOX_ITEMS, []);
+    const existingIndex = items.findIndex(i => i.id === item.id);
+
+    const fullItem: InboxItem = {
+      ...item,
+      id: item.id || generateId(),
+      type: item.type || 'note',
+      tags: item.tags || [],
+      priority: item.priority || 'medium',
+      is_organized: Boolean(item.is_organized),
+      is_archived: Boolean(item.is_archived),
+      is_trash: Boolean(item.is_trash),
+      is_completed: Boolean(item.is_completed),
+      created_at: item.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      items[existingIndex] = fullItem;
+    } else {
+      items.unshift(fullItem);
+    }
+
+    this.setStored(STORAGE_KEYS.INBOX_ITEMS, items);
+    return fullItem;
+  }
+
+  async updateInboxItem(id: string, updates: Partial<InboxItem>): Promise<InboxItem> {
+    this.ensureInitialized();
+    const items = this.getStored<InboxItem[]>(STORAGE_KEYS.INBOX_ITEMS, []);
+    const index = items.findIndex(i => i.id === id);
+    if (index === -1) {
+      throw new Error(`Inbox item ${id} not found.`);
+    }
+
+    const updated: InboxItem = {
+      ...items[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    items[index] = updated;
+    this.setStored(STORAGE_KEYS.INBOX_ITEMS, items);
+    return updated;
+  }
+
+  async deleteInboxItem(id: string, permanent: boolean = false): Promise<void> {
+    this.ensureInitialized();
+    const items = this.getStored<InboxItem[]>(STORAGE_KEYS.INBOX_ITEMS, []);
+    if (permanent) {
+      this.setStored(STORAGE_KEYS.INBOX_ITEMS, items.filter(i => i.id !== id));
+    } else {
+      const index = items.findIndex(i => i.id === id);
+      if (index >= 0) {
+        items[index].is_trash = true;
+        items[index].updated_at = new Date().toISOString();
+        this.setStored(STORAGE_KEYS.INBOX_ITEMS, items);
+      }
+    }
+  }
+
+  async restoreInboxItem(id: string): Promise<void> {
+    this.ensureInitialized();
+    const items = this.getStored<InboxItem[]>(STORAGE_KEYS.INBOX_ITEMS, []);
+    const index = items.findIndex(i => i.id === id);
+    if (index >= 0) {
+      items[index].is_trash = false;
+      items[index].updated_at = new Date().toISOString();
+      this.setStored(STORAGE_KEYS.INBOX_ITEMS, items);
+    }
+  }
+
+  // Monthly Reviews
+  async getMonthlyReviews(): Promise<MonthlyReview[]> {
+    this.ensureInitialized();
+    const reviews = this.getStored<MonthlyReview[]>(STORAGE_KEYS.MONTHLY_REVIEWS, []);
+    return reviews.sort((a, b) => {
+      if (b.year !== a.year) return b.year - a.year;
+      return b.month_number - a.month_number;
+    });
+  }
+
+  async getMonthlyReviewByMonth(monthKey: string): Promise<MonthlyReview | null> {
+    this.ensureInitialized();
+    const reviews = this.getStored<MonthlyReview[]>(STORAGE_KEYS.MONTHLY_REVIEWS, []);
+    return reviews.find(r => r.month_key === monthKey) || null;
+  }
+
+  async saveMonthlyReview(review: MonthlyReview): Promise<MonthlyReview> {
+    this.ensureInitialized();
+    const reviews = this.getStored<MonthlyReview[]>(STORAGE_KEYS.MONTHLY_REVIEWS, []);
+    const existingIndex = reviews.findIndex(r => r.id === review.id || r.month_key === review.month_key);
+
+    const fullReview: MonthlyReview = {
+      ...review,
+      id: review.id || generateId(),
+      reflection: review.reflection || {},
+      next_month: review.next_month || {},
+      stats_snapshot: review.stats_snapshot || {},
+      status: review.status || 'draft',
+      created_at: review.created_at || new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+
+    if (existingIndex >= 0) {
+      reviews[existingIndex] = fullReview;
+    } else {
+      reviews.unshift(fullReview);
+    }
+
+    this.setStored(STORAGE_KEYS.MONTHLY_REVIEWS, reviews);
+    return fullReview;
+  }
+
+  async updateMonthlyReview(id: string, updates: Partial<MonthlyReview>): Promise<MonthlyReview> {
+    this.ensureInitialized();
+    const reviews = this.getStored<MonthlyReview[]>(STORAGE_KEYS.MONTHLY_REVIEWS, []);
+    const index = reviews.findIndex(r => r.id === id);
+    if (index === -1) {
+      throw new Error(`Monthly review ${id} not found.`);
+    }
+
+    const updated: MonthlyReview = {
+      ...reviews[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    reviews[index] = updated;
+    this.setStored(STORAGE_KEYS.MONTHLY_REVIEWS, reviews);
+    return updated;
+  }
+
+  async deleteMonthlyReview(id: string): Promise<void> {
+    this.ensureInitialized();
+    const reviews = this.getStored<MonthlyReview[]>(STORAGE_KEYS.MONTHLY_REVIEWS, []);
+    this.setStored(STORAGE_KEYS.MONTHLY_REVIEWS, reviews.filter(r => r.id !== id));
   }
 
   // Focus Sessions / Deep Work
@@ -1127,6 +1353,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
       learningSprints: this.getStored<LearningSprint[]>(STORAGE_KEYS.LEARNING_SPRINTS, []),
       knowledgeItems: this.getStored<KnowledgeItem[]>(STORAGE_KEYS.KNOWLEDGE_ITEMS, []),
       vocabularyItems: this.getStored<VocabularyItem[]>(STORAGE_KEYS.VOCABULARY_ITEMS, []),
+      inboxItems: this.getStored<InboxItem[]>(STORAGE_KEYS.INBOX_ITEMS, []),
+      monthlyReviews: this.getStored<MonthlyReview[]>(STORAGE_KEYS.MONTHLY_REVIEWS, []),
       focusSessions: this.getStored<FocusSession[]>(STORAGE_KEYS.FOCUS_SESSIONS, []),
       researchPapers: this.getStored<ResearchPaper[]>(STORAGE_KEYS.RESEARCH_PAPERS, []),
       weeklyReviews: this.getStored<WeeklyReview[]>(STORAGE_KEYS.WEEKLY_REVIEWS, []),
@@ -1156,6 +1384,12 @@ export class LocalPlannerStorage implements IPlannerStorage {
     }
     if (Array.isArray(data.vocabularyItems)) {
       this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, data.vocabularyItems);
+    }
+    if (Array.isArray(data.inboxItems)) {
+      this.setStored(STORAGE_KEYS.INBOX_ITEMS, data.inboxItems);
+    }
+    if (Array.isArray(data.monthlyReviews)) {
+      this.setStored(STORAGE_KEYS.MONTHLY_REVIEWS, data.monthlyReviews);
     }
     if (Array.isArray(data.focusSessions)) {
       this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, data.focusSessions);
@@ -1188,6 +1422,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, []);
     this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, []);
     this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, []);
+    this.setStored(STORAGE_KEYS.INBOX_ITEMS, []);
+    this.setStored(STORAGE_KEYS.MONTHLY_REVIEWS, []);
     this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, []);
     this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, []);
     this.setStored(STORAGE_KEYS.WEEKLY_REVIEWS, []);

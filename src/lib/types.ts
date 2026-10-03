@@ -314,16 +314,62 @@ export interface KnowledgeItem {
   updated_at: string;
 }
 
+export type InboxItemType = 'task' | 'idea' | 'note' | 'research_idea' | 'link' | 'reminder' | 'vocabulary' | 'someday';
+export type InboxItemPriority = 'low' | 'medium' | 'high';
+
+export interface InboxItem {
+  id: string;
+  user_id?: string;
+  content: string;
+  title?: string;
+  type: InboxItemType;
+  tags?: string[];
+  due_date?: string | null;
+  url?: string | null;
+  priority?: InboxItemPriority;
+  related_goal_id?: string | null;
+  related_paper_id?: string | null;
+  related_knowledge_id?: string | null;
+  is_organized: boolean;
+  organized_into?: string | null;
+  organized_at?: string | null;
+  is_archived?: boolean;
+  is_trash?: boolean;
+  is_completed?: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export type VocabularyStatus = 'new' | 'learning' | 'known' | 'needs_review';
+export type VocabularySourceType = 'sprint' | 'paper' | 'vault' | 'daily' | 'book' | 'article' | 'custom' | string;
+export type VocabularyReviewRating = 'again' | 'hard' | 'good' | 'easy';
+
 export interface VocabularyItem {
   id: string;
   user_id?: string;
-  source_knowledge_id?: string;
-  source_sprint_id?: string;
+  source_knowledge_id?: string | null;
+  source_sprint_id?: string | null;
+  source_paper_id?: string | null;
+  source_type?: VocabularySourceType;
+  source_title?: string;
   word: string;
   meaning: string;
   example?: string;
+  synonyms?: string[];
+  antonyms?: string[];
+  part_of_speech?: string;
+  pronunciation?: string;
   category?: string;
   tags?: string[];
+  my_notes?: string;
+  is_favorite?: boolean;
+  is_trash?: boolean;
+  last_reviewed_at?: string | null;
+  next_review_at?: string | null;
+  review_count?: number;
+  interval_days?: number;
+  ease_factor?: number;
+  status?: VocabularyStatus;
   created_at: string;
   updated_at: string;
 }
@@ -522,6 +568,51 @@ export interface Goal {
   updated_at: string;
 }
 
+export interface MonthlyReflection {
+  what_went_well?: string;
+  what_was_difficult?: string;
+  what_proud_of?: string;
+  what_learned?: string;
+  what_took_too_much_time?: string;
+  what_to_change?: string;
+  best_moment?: string;
+  biggest_lesson?: string;
+  notes?: string;
+  [key: string]: any;
+}
+
+export interface NextMonthPlanning {
+  priority_1?: string;
+  priority_2?: string;
+  priority_3?: string;
+  main_goal?: string;
+  one_thing_to_improve?: string;
+  one_thing_to_continue?: string;
+  one_thing_to_stop?: string;
+  important_dates?: string;
+  [key: string]: any;
+}
+
+export interface MonthlyReview {
+  id: string;
+  user_id?: string;
+  month_key: string; // 'YYYY-MM', e.g. '2026-10'
+  month_label?: string; // 'October 2026'
+  year: number;
+  month_number: number; // 1-12
+  rating_overall?: number; // 1-5
+  rating_productivity?: number; // 1-5
+  rating_energy?: 'low' | 'medium' | 'high' | string;
+  rating_focus?: number; // 1-5
+  reflection: MonthlyReflection;
+  next_month: NextMonthPlanning;
+  stats_snapshot?: Record<string, any>;
+  notes?: string;
+  status: 'draft' | 'completed';
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PlannerBackup {
   version: number;
   exportedAt: string;
@@ -532,6 +623,8 @@ export interface PlannerBackup {
   learningSprints?: LearningSprint[];
   knowledgeItems?: KnowledgeItem[];
   vocabularyItems?: VocabularyItem[];
+  inboxItems?: InboxItem[];
+  monthlyReviews?: MonthlyReview[];
   focusSessions?: FocusSession[];
   researchPapers?: ResearchPaper[];
   weeklyReviews?: WeeklyReview[];

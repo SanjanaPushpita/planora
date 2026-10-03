@@ -242,11 +242,27 @@ create table if not exists public.vocabulary_items (
   user_id uuid references auth.users on delete cascade,
   source_knowledge_id text references public.knowledge_items(id) on delete set null,
   source_sprint_id text references public.learning_sprints(id) on delete set null,
+  source_paper_id text references public.research_papers(id) on delete set null,
+  source_type text default 'custom',
+  source_title text default '',
   word text not null,
-  meaning text not null,
-  example text,
+  meaning text not null default '',
+  example text default '',
+  synonyms text[] default array[]::text[],
+  antonyms text[] default array[]::text[],
+  part_of_speech text default '',
+  pronunciation text default '',
   category text default 'General',
   tags text[] default array[]::text[],
+  my_notes text default '',
+  is_favorite boolean default false,
+  is_trash boolean default false,
+  last_reviewed_at timestamp with time zone,
+  next_review_at timestamp with time zone,
+  review_count integer default 0,
+  interval_days integer default 0,
+  ease_factor numeric default 2.5,
+  status text not null default 'new', -- 'new' | 'learning' | 'known' | 'needs_review'
   created_at timestamp with time zone default timezone('utc'::text, now()) not null,
   updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -271,6 +287,9 @@ create policy "Users can delete their own vocabulary items"
 
 create index if not exists idx_vocabulary_items_user_id on public.vocabulary_items(user_id);
 create index if not exists idx_vocabulary_items_word on public.vocabulary_items(word);
+create index if not exists idx_vocabulary_items_status on public.vocabulary_items(status);
+create index if not exists idx_vocabulary_items_next_review on public.vocabulary_items(next_review_at);
+create index if not exists idx_vocabulary_items_is_trash on public.vocabulary_items(is_trash);
 
 -- 8. RESEARCH PAPERS TABLE
 create table if not exists public.research_papers (
@@ -533,7 +552,98 @@ create index if not exists idx_goal_tasks_goal_id on public.goal_tasks(goal_id);
 create index if not exists idx_goal_tasks_milestone_id on public.goal_tasks(milestone_id);
 create index if not exists idx_goal_tasks_user_id on public.goal_tasks(user_id);
 
--- 14. PROFILE AUTO-TRIGGER ON SIGNUP
+-- 14. INBOX ITEMS TABLE
+create table if not exists public.inbox_items (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  content text not null,
+  title text default '',
+  type text not null default 'note', -- task, idea, note, research_idea, link, reminder, vocabulary, someday
+  tags text[] default array[]::text[],
+  due_date text,
+  url text,
+  priority text default 'medium',
+  related_goal_id text references public.goals(id) on delete set null,
+  related_paper_id text references public.research_papers(id) on delete set null,
+  related_knowledge_id text references public.knowledge_items(id) on delete set null,
+  is_organized boolean default false,
+  organized_into text,
+  organized_at timestamp with time zone,
+  is_archived boolean default false,
+  is_trash boolean default false,
+  is_completed boolean default false,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.inbox_items enable row level security;
+
+create policy "Users can view their own inbox items"
+  on public.inbox_items for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own inbox items"
+  on public.inbox_items for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own inbox items"
+  on public.inbox_items for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own inbox items"
+  on public.inbox_items for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_inbox_items_user_id on public.inbox_items(user_id);
+create index if not exists idx_inbox_items_type on public.inbox_items(type);
+create index if not exists idx_inbox_items_is_organized on public.inbox_items(is_organized);
+create index if not exists idx_inbox_items_is_trash on public.inbox_items(is_trash);
+create index if not exists idx_inbox_items_created_at on public.inbox_items(created_at);
+
+-- 15. MONTHLY REVIEWS TABLE
+create table if not exists public.monthly_reviews (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  month_key text not null, -- e.g. '2026-10'
+  month_label text default '',
+  year integer not null,
+  month_number integer not null,
+  rating_overall integer default 0,
+  rating_productivity integer default 0,
+  rating_energy text default 'medium',
+  rating_focus integer default 0,
+  reflection jsonb default '{}'::jsonb,
+  next_month jsonb default '{}'::jsonb,
+  stats_snapshot jsonb default '{}'::jsonb,
+  notes text default '',
+  status text not null default 'draft', -- draft, completed
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.monthly_reviews enable row level security;
+
+create policy "Users can view their own monthly reviews"
+  on public.monthly_reviews for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own monthly reviews"
+  on public.monthly_reviews for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own monthly reviews"
+  on public.monthly_reviews for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own monthly reviews"
+  on public.monthly_reviews for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_monthly_reviews_user_id on public.monthly_reviews(user_id);
+create index if not exists idx_monthly_reviews_month_key on public.monthly_reviews(month_key);
+create index if not exists idx_monthly_reviews_status on public.monthly_reviews(status);
+
+-- 16. PROFILE AUTO-TRIGGER ON SIGNUP
 create or replace function public.handle_new_user()
 returns trigger as $$
 begin
@@ -553,4 +663,5 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
+
 

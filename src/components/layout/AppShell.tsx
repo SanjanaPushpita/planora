@@ -8,6 +8,7 @@ import { Header } from './Header';
 import { CommandPalette } from './CommandPalette';
 import { NewPageModal } from '../modals/NewPageModal';
 import { AuthModal } from '../modals/AuthModal';
+import { QuickCaptureModal } from '../modals/QuickCaptureModal';
 import { LockScreen } from './LockScreen';
 import { useKeyboard } from '@/lib/hooks/useKeyboard';
 
@@ -19,14 +20,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isNewPageModalOpen, setIsNewPageModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isQuickCaptureOpen, setIsQuickCaptureOpen] = useState(false);
 
   // Global hotkeys
   useKeyboard({
     onSearch: () => setIsSearchOpen(true),
+    onQuickCapture: () => setIsQuickCaptureOpen(true),
     onEscape: () => {
       setIsSearchOpen(false);
       setIsNewPageModalOpen(false);
       setIsAuthModalOpen(false);
+      setIsQuickCaptureOpen(false);
       setIsSidebarOpen(false);
     },
     onToggleSidebar: () => setIsSidebarOpen((prev) => !prev),
@@ -67,6 +71,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenNewPageModal={() => setIsNewPageModalOpen(true)}
           onOpenAuthModal={() => setIsAuthModalOpen(true)}
+          onOpenQuickCapture={() => setIsQuickCaptureOpen(true)}
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto">
@@ -75,12 +80,21 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Global Modals */}
+      <QuickCaptureModal
+        isOpen={isQuickCaptureOpen}
+        onClose={() => setIsQuickCaptureOpen(false)}
+      />
+
       <CommandPalette
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
         onOpenNewPageModal={() => {
           setIsSearchOpen(false);
           setIsNewPageModalOpen(true);
+        }}
+        onOpenQuickCapture={() => {
+          setIsSearchOpen(false);
+          setIsQuickCaptureOpen(true);
         }}
       />
 

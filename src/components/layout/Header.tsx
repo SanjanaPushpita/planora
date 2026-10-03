@@ -16,7 +16,8 @@ import {
   Loader2, 
   User,
   Heart,
-  AlertCircle
+  AlertCircle,
+  Zap
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -24,6 +25,7 @@ interface HeaderProps {
   onOpenSearch: () => void;
   onOpenNewPageModal: () => void;
   onOpenAuthModal: () => void;
+  onOpenQuickCapture?: () => void;
 }
 
 export function Header({
@@ -31,6 +33,7 @@ export function Header({
   onOpenSearch,
   onOpenNewPageModal,
   onOpenAuthModal,
+  onOpenQuickCapture,
 }: HeaderProps) {
   const { profile, saveStatus, lock } = usePlanner();
   const { theme, colorMode, setTheme, toggleColorMode } = useTheme();
@@ -97,6 +100,18 @@ export function Header({
 
       {/* Right: Actions, Search, Theme & Profile */}
       <div className="flex items-center gap-1.5 sm:gap-2">
+        {/* Quick Capture Button */}
+        {onOpenQuickCapture && (
+          <button
+            onClick={onOpenQuickCapture}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs bg-[var(--accent-soft)] hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] text-[var(--accent)] border border-[var(--accent)]/30 transition-all font-medium shadow-2xs group"
+            title="Quick Capture (Ctrl/Cmd + Shift + Space)"
+          >
+            <Zap className="w-3.5 h-3.5 fill-current" />
+            <span className="hidden sm:inline">+ Quick Capture</span>
+          </button>
+        )}
+
         {/* Quick Search Button */}
         <button
           onClick={onOpenSearch}

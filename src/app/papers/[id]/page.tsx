@@ -44,6 +44,7 @@ export default function PaperDetailPage() {
     deleteResearchPaper, 
     restoreResearchPaper,
     saveKnowledgeItem,
+    saveVocabularyItem,
     focusSessions,
     paperSaveStatus 
   } = usePlanner();
@@ -70,6 +71,13 @@ export default function PaperDetailPage() {
   const [pagesRead, setPagesRead] = useState<number>(0);
   const [totalPages, setTotalPages] = useState<number>(0);
   const [isFavorite, setIsFavorite] = useState(false);
+
+  // Vocabulary quick save modal state
+  const [isVocabModalOpen, setIsVocabModalOpen] = useState(false);
+  const [vocabWord, setVocabWord] = useState('');
+  const [vocabMeaning, setVocabMeaning] = useState('');
+  const [vocabExample, setVocabExample] = useState('');
+  const [vocabSavedNotification, setVocabSavedNotification] = useState(false);
 
   // Structured Notes State
   const [notesState, setNotesState] = useState<StructuredPaperNotes>({});
@@ -359,6 +367,41 @@ export default function PaperDetailPage() {
     }
   };
 
+  // Save technical term into Vocabulary
+  const handleSavePaperTermToVocab = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vocabWord.trim()) return;
+
+    try {
+      await saveVocabularyItem({
+        id: `voc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        word: vocabWord.trim(),
+        meaning: vocabMeaning.trim() || 'Key technical concept from paper',
+        example: vocabExample.trim() || (title ? `From paper: "${title}"` : undefined),
+        category: researchArea || 'Research Paper',
+        tags: [...tags, 'research-term', (researchArea || '').toLowerCase().replace(/\s+/g, '-')],
+        source_type: 'paper',
+        source_paper_id: paperId,
+        source_title: title,
+        status: 'new',
+        review_count: 0,
+        ease_factor: 2.5,
+        interval_days: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+
+      setVocabSavedNotification(true);
+      setVocabWord('');
+      setVocabMeaning('');
+      setVocabExample('');
+      setIsVocabModalOpen(false);
+      setTimeout(() => setVocabSavedNotification(false), 4000);
+    } catch (e) {
+      console.error('Failed to save term to vocabulary:', e);
+    }
+  };
+
   // Related Focus Sessions
   const relatedSessions = useMemo(() => {
     return focusSessions.filter(fs => fs.related_paper_id === paperId);
@@ -416,6 +459,15 @@ export default function PaperDetailPage() {
           </span>
 
           <button
+            onClick={() => setIsVocabModalOpen(true)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-medium text-indigo-700 dark:text-indigo-300 transition-colors"
+            title="Save technical term or vocabulary from this paper"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-indigo-500" />
+            <span>Save Term to Vocab</span>
+          </button>
+
+          <button
             onClick={handleManualSave}
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-primary)] transition-colors"
           >
@@ -454,6 +506,14 @@ export default function PaperDetailPage() {
         <div className="flex items-center gap-2 p-3 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800 text-xs text-emerald-900 dark:text-emerald-200 animate-in fade-in">
           <BookmarkCheck className="w-4 h-4 text-emerald-600 shrink-0" />
           <span>Saved key research insights into your Knowledge Vault ✓</span>
+        </div>
+      )}
+
+      {/* Vocab Save Confirmation */}
+      {vocabSavedNotification && (
+        <div className="flex items-center gap-2 p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-300 dark:border-indigo-800 text-xs text-indigo-900 dark:text-indigo-200 animate-in fade-in">
+          <BookmarkCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+          <span>Saved technical term to your Vocabulary Builder ✓</span>
         </div>
       )}
 
@@ -1086,6 +1146,100 @@ export default function PaperDetailPage() {
                 )}
               </a>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Save Term to Vocabulary Modal */}
+      {isVocabModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div 
+            className="fixed inset-0 bg-black/40 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsVocabModalOpen(false)}
+          />
+
+          <div className="relative w-full max-w-lg journal-paper p-6 overflow-hidden shadow-2xl z-10 border-2 border-[var(--border-strong)] animate-in zoom-in-95 duration-150 space-y-5">
+            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2">
+                <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400">
+                  <BookOpen className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-serif-aesthetic font-bold text-base text-[var(--text-primary)]">
+                    Save Technical Term to Vocabulary
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Link technical terms & concepts from &ldquo;{title}&rdquo; to your Spaced Review library.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setIsVocabModalOpen(false)}
+                className="p-1 rounded-lg text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePaperTermToVocab} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                  Term / Concept / Word <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Counterfactual explanation, Domain adaptation, Calibration..."
+                  value={vocabWord}
+                  onChange={(e) => setVocabWord(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                  autoFocus
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                  Definition / Meaning (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="How does this paper define this concept? Explain clearly..."
+                  value={vocabMeaning}
+                  onChange={(e) => setVocabMeaning(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-primary)] mb-1">
+                  Context / Example in Paper (Optional)
+                </label>
+                <input
+                  type="text"
+                  placeholder={`Default: From paper "${title}"`}
+                  value={vocabExample}
+                  onChange={(e) => setVocabExample(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-xs text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-color)]">
+                <button
+                  type="button"
+                  onClick={() => setIsVocabModalOpen(false)}
+                  className="px-4 py-2 rounded-xl text-xs text-[var(--text-secondary)] hover:bg-[var(--bg-paper-hover)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={!vocabWord.trim()}
+                  className="px-5 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-semibold shadow-xs disabled:opacity-50 transition-all hover:scale-[1.01]"
+                >
+                  Save to Vocabulary
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
