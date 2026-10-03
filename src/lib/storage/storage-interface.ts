@@ -3,6 +3,7 @@ import {
   PageBlock, 
   UserProfile, 
   PlannerBackup,
+  BackupImportResult,
   PageType,
   WalkSession,
   LearningSprint,
@@ -132,7 +133,7 @@ export interface IPlannerStorage {
 
   // Backup & Restore
   exportData(): Promise<PlannerBackup>;
-  importData(data: PlannerBackup): Promise<boolean>;
+  importData(data: PlannerBackup, mode?: 'merge' | 'replace'): Promise<BackupImportResult>;
   resetToDefault(): Promise<void>;
 }
 

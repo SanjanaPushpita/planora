@@ -4,6 +4,7 @@ import {
   PageBlock, 
   UserProfile, 
   PlannerBackup,
+  BackupImportResult,
   PageType,
   WalkSession,
   LearningSprint,
@@ -1344,6 +1345,7 @@ export class LocalPlannerStorage implements IPlannerStorage {
   async exportData(): Promise<PlannerBackup> {
     this.ensureInitialized();
     return {
+      app: 'Planora',
       version: 1,
       exportedAt: new Date().toISOString(),
       profile: await this.getProfile(),
@@ -1364,52 +1366,178 @@ export class LocalPlannerStorage implements IPlannerStorage {
     };
   }
 
-  async importData(data: PlannerBackup): Promise<boolean> {
-    if (!data || !data.version || !Array.isArray(data.pages) || !Array.isArray(data.blocks)) {
-      throw new Error('Invalid backup file format.');
+  async importData(data: PlannerBackup, mode: 'merge' | 'replace' = 'merge'): Promise<BackupImportResult> {
+    if (!data || typeof data !== 'object') {
+      throw new Error('Invalid backup file: Not a valid JSON object.');
     }
-    this.setStored(STORAGE_KEYS.PAGES, data.pages);
-    this.setStored(STORAGE_KEYS.BLOCKS, data.blocks);
+    if (!data.version || !Array.isArray(data.pages) || !Array.isArray(data.blocks)) {
+      throw new Error('Invalid backup file format: Missing essential pages or blocks schema.');
+    }
+
+    const summary = {
+      pages: 0,
+      blocks: 0,
+      walks: 0,
+      sprints: 0,
+      vault: 0,
+      vocabulary: 0,
+      inbox: 0,
+      monthly_reviews: 0,
+      focus_sessions: 0,
+      papers: 0,
+      weekly_reviews: 0,
+      goals: 0,
+      milestones: 0,
+      tasks: 0,
+    };
+
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    // Helper to merge or replace an array of items by ID
+    const mergeCollection = <T extends { id: string }>(
+      storageKey: string,
+      incomingItems: T[] | undefined,
+      defaultItems: T[] = []
+    ): { imported: number; skipped: number } => {
+      if (!Array.isArray(incomingItems)) return { imported: 0, skipped: 0 };
+      
+      if (mode === 'replace') {
+        this.setStored(storageKey, incomingItems);
+        return { imported: incomingItems.length, skipped: 0 };
+      }
+
+      // Merge Mode
+      const existing = this.getStored<T[]>(storageKey, defaultItems);
+      const existingMap = new Map<string, T>(existing.map(item => [item.id, item]));
+      let imp = 0;
+      let skp = 0;
+
+      for (const item of incomingItems) {
+        if (!item || !item.id) {
+          skp++;
+          continue;
+        }
+        if (existingMap.has(item.id)) {
+          // If already exists, update with incoming
+          existingMap.set(item.id, item);
+          imp++;
+        } else {
+          // New item
+          existingMap.set(item.id, item);
+          imp++;
+        }
+      }
+
+      this.setStored(storageKey, Array.from(existingMap.values()));
+      return { imported: imp, skipped: skp };
+    };
+
+    // 1. Pages
+    const pagesRes = mergeCollection(STORAGE_KEYS.PAGES, data.pages, INITIAL_PAGES);
+    summary.pages = pagesRes.imported;
+    importedCount += pagesRes.imported;
+    skippedCount += pagesRes.skipped;
+
+    // 2. Blocks
+    const blocksRes = mergeCollection(STORAGE_KEYS.BLOCKS, data.blocks, INITIAL_BLOCKS);
+    summary.blocks = blocksRes.imported;
+    importedCount += blocksRes.imported;
+    skippedCount += blocksRes.skipped;
+
+    // 3. Profile
     if (data.profile) {
-      this.setStored(STORAGE_KEYS.PROFILE, data.profile);
+      if (mode === 'replace') {
+        this.setStored(STORAGE_KEYS.PROFILE, data.profile);
+      } else {
+        const currentProfile = await this.getProfile();
+        this.setStored(STORAGE_KEYS.PROFILE, {
+          ...currentProfile,
+          ...data.profile,
+          passcode: currentProfile.passcode || data.profile.passcode,
+        });
+      }
     }
-    if (Array.isArray(data.walkSessions)) {
-      this.setStored(STORAGE_KEYS.WALK_SESSIONS, data.walkSessions);
-    }
-    if (Array.isArray(data.learningSprints)) {
-      this.setStored(STORAGE_KEYS.LEARNING_SPRINTS, data.learningSprints);
-    }
-    if (Array.isArray(data.knowledgeItems)) {
-      this.setStored(STORAGE_KEYS.KNOWLEDGE_ITEMS, data.knowledgeItems);
-    }
-    if (Array.isArray(data.vocabularyItems)) {
-      this.setStored(STORAGE_KEYS.VOCABULARY_ITEMS, data.vocabularyItems);
-    }
-    if (Array.isArray(data.inboxItems)) {
-      this.setStored(STORAGE_KEYS.INBOX_ITEMS, data.inboxItems);
-    }
-    if (Array.isArray(data.monthlyReviews)) {
-      this.setStored(STORAGE_KEYS.MONTHLY_REVIEWS, data.monthlyReviews);
-    }
-    if (Array.isArray(data.focusSessions)) {
-      this.setStored(STORAGE_KEYS.FOCUS_SESSIONS, data.focusSessions);
-    }
-    if (Array.isArray(data.researchPapers)) {
-      this.setStored(STORAGE_KEYS.RESEARCH_PAPERS, data.researchPapers);
-    }
-    if (Array.isArray(data.weeklyReviews)) {
-      this.setStored(STORAGE_KEYS.WEEKLY_REVIEWS, data.weeklyReviews);
-    }
-    if (Array.isArray(data.goals)) {
-      this.setStored(STORAGE_KEYS.GOALS, data.goals);
-    }
-    if (Array.isArray(data.goalMilestones)) {
-      this.setStored(STORAGE_KEYS.GOAL_MILESTONES, data.goalMilestones);
-    }
-    if (Array.isArray(data.goalTasks)) {
-      this.setStored(STORAGE_KEYS.GOAL_TASKS, data.goalTasks);
-    }
-    return true;
+
+    // 4. Walk Sessions
+    const walkRes = mergeCollection(STORAGE_KEYS.WALK_SESSIONS, data.walkSessions);
+    summary.walks = walkRes.imported;
+    importedCount += walkRes.imported;
+    skippedCount += walkRes.skipped;
+
+    // 5. Learning Sprints
+    const sprintRes = mergeCollection(STORAGE_KEYS.LEARNING_SPRINTS, data.learningSprints);
+    summary.sprints = sprintRes.imported;
+    importedCount += sprintRes.imported;
+    skippedCount += sprintRes.skipped;
+
+    // 6. Knowledge Vault
+    const vaultRes = mergeCollection(STORAGE_KEYS.KNOWLEDGE_ITEMS, data.knowledgeItems);
+    summary.vault = vaultRes.imported;
+    importedCount += vaultRes.imported;
+    skippedCount += vaultRes.skipped;
+
+    // 7. Vocabulary
+    const vocabRes = mergeCollection(STORAGE_KEYS.VOCABULARY_ITEMS, data.vocabularyItems);
+    summary.vocabulary = vocabRes.imported;
+    importedCount += vocabRes.imported;
+    skippedCount += vocabRes.skipped;
+
+    // 8. Inbox Items
+    const inboxRes = mergeCollection(STORAGE_KEYS.INBOX_ITEMS, data.inboxItems);
+    summary.inbox = inboxRes.imported;
+    importedCount += inboxRes.imported;
+    skippedCount += inboxRes.skipped;
+
+    // 9. Monthly Reviews
+    const monthlyRes = mergeCollection(STORAGE_KEYS.MONTHLY_REVIEWS, data.monthlyReviews);
+    summary.monthly_reviews = monthlyRes.imported;
+    importedCount += monthlyRes.imported;
+    skippedCount += monthlyRes.skipped;
+
+    // 10. Focus Sessions
+    const focusRes = mergeCollection(STORAGE_KEYS.FOCUS_SESSIONS, data.focusSessions);
+    summary.focus_sessions = focusRes.imported;
+    importedCount += focusRes.imported;
+    skippedCount += focusRes.skipped;
+
+    // 11. Research Papers
+    const paperRes = mergeCollection(STORAGE_KEYS.RESEARCH_PAPERS, data.researchPapers);
+    summary.papers = paperRes.imported;
+    importedCount += paperRes.imported;
+    skippedCount += paperRes.skipped;
+
+    // 12. Weekly Reviews
+    const weeklyRes = mergeCollection(STORAGE_KEYS.WEEKLY_REVIEWS, data.weeklyReviews);
+    summary.weekly_reviews = weeklyRes.imported;
+    importedCount += weeklyRes.imported;
+    skippedCount += weeklyRes.skipped;
+
+    // 13. Goals
+    const goalRes = mergeCollection(STORAGE_KEYS.GOALS, data.goals);
+    summary.goals = goalRes.imported;
+    importedCount += goalRes.imported;
+    skippedCount += goalRes.skipped;
+
+    // 14. Milestones
+    const mileRes = mergeCollection(STORAGE_KEYS.GOAL_MILESTONES, data.goalMilestones);
+    summary.milestones = mileRes.imported;
+    importedCount += mileRes.imported;
+    skippedCount += mileRes.skipped;
+
+    // 15. Goal Tasks
+    const taskRes = mergeCollection(STORAGE_KEYS.GOAL_TASKS, data.goalTasks);
+    summary.tasks = taskRes.imported;
+    importedCount += taskRes.imported;
+    skippedCount += taskRes.skipped;
+
+    return {
+      success: true,
+      importedCount,
+      skippedCount,
+      summary,
+      message: `Successfully ${mode === 'replace' ? 'replaced with' : 'merged'} ${importedCount} records.`,
+    };
   }
 
   async resetToDefault(): Promise<void> {

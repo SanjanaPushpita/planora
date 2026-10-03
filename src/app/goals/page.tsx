@@ -81,6 +81,7 @@ export default function GoalsPage() {
   const [newStartDate, setNewStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [newTargetDate, setNewTargetDate] = useState('');
   const [newWhy, setNewWhy] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const activeGoals = goals.filter(g => !g.is_trash);
 
@@ -108,34 +109,41 @@ export default function GoalsPage() {
 
   const handleCreateGoal = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!newTitle.trim() || isSubmitting) return;
 
-    const goalId = `goal-${Date.now()}`;
-    const newGoal: Goal = {
-      id: goalId,
-      title: newTitle.trim(),
-      description: newDesc.trim(),
-      category: newCategory,
-      priority: newPriority,
-      status: 'not_started',
-      start_date: newStartDate || null,
-      target_date: newTargetDate || null,
-      why_it_matters: newWhy.trim(),
-      progress: 0,
-      is_favorite: false,
-      is_archived: false,
-      is_trash: false,
-      notes: '',
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    setIsSubmitting(true);
+    try {
+      const goalId = `goal-${Date.now()}`;
+      const newGoal: Goal = {
+        id: goalId,
+        title: newTitle.trim(),
+        description: newDesc.trim(),
+        category: newCategory,
+        priority: newPriority,
+        status: 'not_started',
+        start_date: newStartDate || null,
+        target_date: newTargetDate || null,
+        why_it_matters: newWhy.trim(),
+        progress: 0,
+        is_favorite: false,
+        is_archived: false,
+        is_trash: false,
+        notes: '',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
 
-    await saveGoal(newGoal);
-    setShowNewGoalModal(false);
-    setNewTitle('');
-    setNewDesc('');
-    setNewWhy('');
-    setNewTargetDate('');
+      await saveGoal(newGoal);
+      setShowNewGoalModal(false);
+      setNewTitle('');
+      setNewDesc('');
+      setNewWhy('');
+      setNewTargetDate('');
+    } catch (err) {
+      console.error('Failed to create goal:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -505,11 +513,11 @@ export default function GoalsPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-3 border-t border-[var(--border-color)]">
-                <Button variant="ghost" size="sm" type="button" onClick={() => setShowNewGoalModal(false)}>
+                <Button variant="ghost" size="sm" type="button" onClick={() => setShowNewGoalModal(false)} disabled={isSubmitting}>
                   Cancel
                 </Button>
-                <Button variant="primary" size="sm" type="submit">
-                  Create Goal
+                <Button variant="primary" size="sm" type="submit" disabled={isSubmitting}>
+                  {isSubmitting ? 'Creating...' : 'Create Goal'}
                 </Button>
               </div>
             </form>

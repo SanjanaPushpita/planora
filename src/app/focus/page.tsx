@@ -105,6 +105,7 @@ export default function FocusSessionsPage() {
   const [reflectionNotes, setReflectionNotes] = useState<string>('');
   const [saveToVault, setSaveToVault] = useState<boolean>(false);
   const [updatePaperProgress, setUpdatePaperProgress] = useState<number | null>(null);
+  const [isSavingSession, setIsSavingSession] = useState<boolean>(false);
 
   // Edit History Modal
   const [editingSession, setEditingSession] = useState<FocusSession | null>(null);
@@ -294,6 +295,9 @@ export default function FocusSessionsPage() {
 
   // Complete and Save to Supabase
   const handleCompleteSession = async () => {
+    if (isSavingSession) return;
+    setIsSavingSession(true);
+
     const now = new Date().toISOString();
     const finalCat = isCustomCategoryActive ? (customCategory.trim() || 'Other') : category;
 
@@ -361,6 +365,8 @@ export default function FocusSessionsPage() {
       alert('Save temporarily queued locally due to network state. Your session is safe!');
       setIsSessionActive(false);
       setIsReflectionModalOpen(false);
+    } finally {
+      setIsSavingSession(false);
     }
   };
 
@@ -1209,9 +1215,10 @@ export default function FocusSessionsPage() {
               <button
                 type="button"
                 onClick={handleCompleteSession}
-                className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-semibold shadow-xs"
+                disabled={isSavingSession}
+                className="px-6 py-2 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-xs font-semibold shadow-xs disabled:opacity-50"
               >
-                Complete & Save Session
+                {isSavingSession ? 'Saving Session...' : 'Complete & Save Session'}
               </button>
             </div>
           </div>

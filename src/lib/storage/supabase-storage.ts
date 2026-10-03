@@ -4,6 +4,7 @@ import {
   PageBlock, 
   UserProfile, 
   PlannerBackup,
+  BackupImportResult,
   PageType,
   WalkSession,
   LearningSprint,
@@ -2410,11 +2411,134 @@ export class SupabasePlannerStorage implements IPlannerStorage {
   }
 
   async exportData(): Promise<PlannerBackup> {
-    return this.fallback.exportData();
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.exportData();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        return this.fallback.exportData();
+      }
+
+      // Parallelize fetching all models for authenticated user
+      const [
+        profile,
+        pages,
+        walks,
+        sprints,
+        vault,
+        vocab,
+        inbox,
+        monthly,
+        focus,
+        papers,
+        weekly,
+        goals,
+        milestones,
+        tasks
+      ] = await Promise.all([
+        this.getProfile(),
+        this.getPages(true),
+        this.getWalkSessions(),
+        this.getLearningSprints(),
+        this.getKnowledgeItems(),
+        this.getVocabularyItems(true),
+        this.getInboxItems(true, true),
+        this.getMonthlyReviews(),
+        this.getFocusSessions(),
+        this.getResearchPapers(true),
+        this.getWeeklyReviews(),
+        this.getGoals(true),
+        this.fallback.exportData().then(d => d.goalMilestones || []),
+        this.getGoalTasks(),
+      ]);
+
+      // Collect all page blocks
+      const allBlocks: PageBlock[] = [];
+      for (const p of pages) {
+        const blocks = await this.getBlocksByPageId(p.id);
+        allBlocks.push(...blocks);
+      }
+
+      return {
+        app: 'Planora',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        profile,
+        pages,
+        blocks: allBlocks,
+        walkSessions: walks,
+        learningSprints: sprints,
+        knowledgeItems: vault,
+        vocabularyItems: vocab,
+        inboxItems: inbox,
+        monthlyReviews: monthly,
+        focusSessions: focus,
+        researchPapers: papers,
+        weeklyReviews: weekly,
+        goals,
+        goalMilestones: milestones,
+        goalTasks: tasks,
+      };
+    } catch (err) {
+      console.error('[Supabase exportData exception, fallback to local]', err);
+      return this.fallback.exportData();
+    }
   }
 
-  async importData(data: PlannerBackup): Promise<boolean> {
-    return this.fallback.importData(data);
+  async importData(data: PlannerBackup, mode: 'merge' | 'replace' = 'merge'): Promise<BackupImportResult> {
+    const localResult = await this.fallback.importData(data, mode);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localResult;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localResult;
+
+      // Sync imported items to Supabase asynchronously
+      if (Array.isArray(data.pages)) {
+        for (const p of data.pages) {
+          await this.createPage(p).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.blocks)) {
+        for (const b of data.blocks) {
+          await this.saveBlock(b).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.vocabularyItems)) {
+        for (const v of data.vocabularyItems) {
+          await this.saveVocabularyItem(v).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.inboxItems)) {
+        for (const i of data.inboxItems) {
+          await this.saveInboxItem(i).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.monthlyReviews)) {
+        for (const m of data.monthlyReviews) {
+          await this.saveMonthlyReview(m).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.goals)) {
+        for (const g of data.goals) {
+          await this.saveGoal(g).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.researchPapers)) {
+        for (const p of data.researchPapers) {
+          await this.saveResearchPaper(p).catch(() => {});
+        }
+      }
+    } catch (err) {
+      console.error('[Supabase importData sync exception]', err);
+    }
+
+    return localResult;
   }
 
   async resetToDefault(): Promise<void> {

@@ -120,6 +120,7 @@ function LearningSprintContent() {
   const [completedSprint, setCompletedSprint] = useState<LearningSprint | null>(null);
   const [hasShownTimeUpPrompt, setHasShownTimeUpPrompt] = useState(false);
   const [vocabSavedNotifs, setVocabSavedNotifs] = useState<Record<string, boolean>>({});
+  const [isCompletingSprint, setIsCompletingSprint] = useState(false);
 
   // 1. Check URL query parameters for direct launch (e.g. from Dashboard)
   useEffect(() => {
@@ -385,6 +386,9 @@ function LearningSprintContent() {
 
   // 7. Complete Learning Sprint
   const handleCompleteSprint = async () => {
+    if (isCompletingSprint) return;
+    setIsCompletingSprint(true);
+
     const finalKeyPoints = [keyPoint1, keyPoint2, keyPoint3].filter(p => p.trim().length > 0);
     const completedAt = new Date().toISOString();
 
@@ -414,6 +418,8 @@ function LearningSprintContent() {
       await saveLearningSprint(sprintRecord);
     } catch (e) {
       console.error('Error saving learning sprint:', e);
+    } finally {
+      setIsCompletingSprint(false);
     }
 
     // Clean up active sprint from localStorage

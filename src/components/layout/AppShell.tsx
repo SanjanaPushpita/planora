@@ -11,6 +11,7 @@ import { AuthModal } from '../modals/AuthModal';
 import { QuickCaptureModal } from '../modals/QuickCaptureModal';
 import { LockScreen } from './LockScreen';
 import { useKeyboard } from '@/lib/hooks/useKeyboard';
+import { ErrorBoundary } from '../ui/ErrorBoundary';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -75,7 +76,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         />
 
         <main className="flex-1 p-4 sm:p-6 lg:p-8 max-w-6xl w-full mx-auto">
-          {children}
+          <ErrorBoundary>
+            {children}
+          </ErrorBoundary>
         </main>
       </div>
 

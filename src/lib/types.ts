@@ -614,6 +614,7 @@ export interface MonthlyReview {
 }
 
 export interface PlannerBackup {
+  app?: string; // 'Planora'
   version: number;
   exportedAt: string;
   profile: UserProfile;
@@ -631,4 +632,28 @@ export interface PlannerBackup {
   goals?: Goal[];
   goalMilestones?: GoalMilestone[];
   goalTasks?: GoalTask[];
+}
+
+export interface BackupImportResult {
+  success: boolean;
+  importedCount: number;
+  skippedCount: number;
+  summary: {
+    pages: number;
+    blocks: number;
+    walks: number;
+    sprints: number;
+    vault: number;
+    vocabulary: number;
+    inbox: number;
+    monthly_reviews: number;
+    focus_sessions: number;
+    papers: number;
+    weekly_reviews: number;
+    goals: number;
+    milestones: number;
+    tasks: number;
+    [key: string]: number;
+  };
+  message?: string;
 }
