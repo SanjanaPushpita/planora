@@ -179,13 +179,13 @@ export default function InboxPage() {
     try {
       if (organizeTarget === 'daily_task') {
         // Find or create daily page for targetDate
-        let dailyPage = pages.find(p => p.page_type === 'daily' && p.date === targetDate && !p.is_deleted);
+        const dailyPage = pages.find(p => p.page_type === 'daily' && p.date === targetDate && !p.is_deleted);
 
         // Add task into Daily Checklist Block or create block
         const targetPage = dailyPage || pages.find(p => p.page_type === 'daily' && !p.is_deleted) || pages[0];
         if (targetPage) {
           const blocks = await storage.getBlocksByPageId(targetPage.id);
-          let checkBlock = blocks.find((b: any) => b.type === 'checklist');
+          const checkBlock = blocks.find((b: any) => b.type === 'checklist');
           if (checkBlock) {
             const content = (checkBlock.content as ChecklistBlockContent) || { items: [] };
             const newItems = [

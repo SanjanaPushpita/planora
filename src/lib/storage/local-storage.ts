@@ -367,7 +367,7 @@ export class LocalPlannerStorage implements IPlannerStorage {
   // Walk Sessions (Durable Storage + Recovery)
   async getWalkSessions(params?: { pageId?: string; startDate?: string; endDate?: string }): Promise<WalkSession[]> {
     this.ensureInitialized();
-    let sessions = this.getStored<WalkSession[]>(STORAGE_KEYS.WALK_SESSIONS, []);
+    const sessions = this.getStored<WalkSession[]>(STORAGE_KEYS.WALK_SESSIONS, []);
 
     // ONE-TIME RECOVERY / MIGRATION: check if any sessions exist in legacy global walk key or block contents
     let needPersist = false;

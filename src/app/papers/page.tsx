@@ -66,7 +66,7 @@ export default function ResearchPaperTrackerPage() {
 
   // Filtered & Sorted Papers
   const filteredPapers = useMemo(() => {
-    let list = researchPapers.filter(p => {
+    const list = researchPapers.filter(p => {
       // Trash filter
       if (selectedStatus === 'trash') return Boolean(p.is_trash);
       if (p.is_trash) return false;

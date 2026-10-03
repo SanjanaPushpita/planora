@@ -119,7 +119,7 @@ export function HabitGridBlock({ content, onChange }: HabitGridBlockProps) {
 
   // Monthly stats calculations
   const habits = data.habits || [];
-  let totalPossibleChecks = habits.length * daysInMonth;
+  const totalPossibleChecks = habits.length * daysInMonth;
   let totalCompletedChecks = 0;
 
   const habitStats = habits.map((h) => {

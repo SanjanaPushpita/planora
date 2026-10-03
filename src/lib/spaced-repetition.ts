@@ -1,4 +1,4 @@
-import { VocabularyStatus, VocabularyReviewRating } from './types';
+import type { VocabularyStatus, VocabularyReviewRating } from './types';
 
 /**
  * Predictable SM-2 spaced repetition calculation for Vocabulary flashcards
