@@ -271,13 +271,14 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-8 pb-20 max-w-5xl mx-auto">
-      {/* Aesthetic Greeting Banner inspired by Reference 2 */}
-      <div className="journal-paper p-6 sm:p-8 relative overflow-hidden border-2 border-[var(--border-strong)]">
-        <div className="absolute -bottom-10 -right-10 w-40 h-40 rounded-full bg-[var(--accent-soft)] opacity-40 pointer-events-none" />
+      {/* Aesthetic Refined 3D Floating Hero Panel */}
+      <div className="floating-panel p-6 sm:p-8 relative overflow-hidden border border-[var(--border-strong)] bg-gradient-to-br from-[var(--bg-paper)]/90 via-[var(--bg-paper)]/75 to-[var(--accent-soft)]/30 backdrop-blur-xl">
+        <div className="absolute -top-12 -right-12 w-48 h-48 rounded-full bg-[var(--accent)] opacity-15 filter blur-2xl pointer-events-none" />
+        <div className="absolute -bottom-8 -left-8 w-36 h-36 rounded-full bg-[var(--accent)] opacity-10 filter blur-xl pointer-events-none" />
 
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)]">
+          <div className="space-y-2.5">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-[var(--accent)]">
               <CalendarIcon className="w-3.5 h-3.5" />
               <span>{formatDate(todayStr, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}</span>
             </div>
@@ -296,7 +297,7 @@ export default function DashboardPage() {
           <div className="shrink-0 flex items-center gap-2">
             <button
               onClick={handleOpenOrCreateTodayPlanner}
-              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-sm font-semibold shadow-md hover:scale-[1.02] active:scale-98 transition-all"
+              className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-sm font-semibold shadow-lg hover:shadow-xl hover:scale-[1.02] active:scale-98 transition-all glass-card-hover"
             >
               <Sparkles className="w-4 h-4" />
               <span>{todayPlanner ? "Open Today's Planner" : "Start Today's Planner"}</span>
@@ -306,11 +307,11 @@ export default function DashboardPage() {
       </div>
 
       {/* LEARN SOMETHING NEW: Today's Discovery Curiosity Card */}
-      <div className="journal-paper p-5 sm:p-6 border border-[var(--border-color)] relative overflow-hidden bg-gradient-to-r from-[var(--bg-paper)] to-[var(--bg-paper-subtle)]">
+      <div className="floating-panel p-5 sm:p-6 border border-[var(--border-color)] relative overflow-hidden bg-[var(--bg-paper)]/75 backdrop-blur-xl glass-card-hover">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1.5 max-w-xl">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-800/40">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-800 dark:text-amber-300 border border-amber-500/30">
                 <Lightbulb className="w-3 h-3" />
                 <span>Today&apos;s Discovery</span>
               </span>
@@ -340,10 +341,10 @@ export default function DashboardPage() {
             <button
               onClick={handleSaveCuriosityForLater}
               disabled={savedForLater}
-              className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border transition-colors ${
+              className={`flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-medium border transition-all ${
                 savedForLater
-                  ? 'bg-emerald-50 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border-emerald-300'
-                  : 'bg-[var(--bg-paper)] hover:bg-[var(--bg-paper-hover)] text-[var(--text-secondary)] border-[var(--border-color)]'
+                  ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                  : 'bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] text-[var(--text-secondary)] border-[var(--border-color)]'
               }`}
             >
               {savedForLater ? (
@@ -359,7 +360,7 @@ export default function DashboardPage() {
             <button
               onClick={handleNextTopic}
               title="Another topic"
-              className="p-2 rounded-xl bg-[var(--bg-paper)] hover:bg-[var(--bg-paper-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border-color)] transition-colors"
+              className="p-2 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-[var(--border-color)] transition-colors"
             >
               <RefreshCw className="w-3.5 h-3.5" />
             </button>
@@ -647,7 +648,7 @@ export default function DashboardPage() {
         <span className="block text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] mb-3">
           Quick Create Tools
         </span>
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           {quickActionTemplates.map((tmpl) => {
             const Icon = tmpl.icon;
             return (
@@ -657,12 +658,12 @@ export default function DashboardPage() {
                   setModalDefaultType(tmpl.type);
                   setIsNewPageModalOpen(true);
                 }}
-                className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-[var(--bg-paper)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] hover:border-[var(--accent)] transition-all shadow-2xs group"
+                className="flex flex-col items-center justify-center p-3.5 rounded-2xl bg-[var(--bg-paper)]/75 hover:bg-[var(--bg-paper-hover)]/90 border border-[var(--border-color)] hover:border-[var(--accent)] backdrop-blur-md transition-all shadow-glass glass-card-hover group"
               >
-                <div className="p-2 rounded-xl bg-[var(--accent-soft)] text-[var(--accent)] mb-2 group-hover:scale-110 transition-transform">
+                <div className="p-2.5 rounded-xl bg-[var(--accent-soft)]/80 text-[var(--accent)] mb-2 group-hover:scale-110 transition-transform shadow-2xs">
                   <Icon className="w-4 h-4" />
                 </div>
-                <span className="text-xs font-medium text-[var(--text-primary)] text-center">
+                <span className="text-xs font-medium text-[var(--text-primary)] text-center group-hover:text-[var(--accent)] transition-colors">
                   + {tmpl.label}
                 </span>
               </button>

@@ -104,7 +104,7 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
 
       {/* Sidebar container */}
       <aside
-        className={`fixed md:sticky top-0 inset-y-0 left-0 z-40 w-64 flex flex-col bg-[var(--bg-paper)] border-r border-[var(--border-color)] transition-transform duration-200 ease-in-out ${
+        className={`fixed md:sticky top-0 inset-y-0 left-0 z-40 w-64 flex flex-col bg-[var(--bg-paper)]/80 backdrop-blur-xl border-r border-[var(--border-color)] shadow-glass transition-transform duration-250 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'
         }`}
       >
@@ -115,7 +115,7 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
             className="flex items-center gap-2.5 group"
             onClick={() => onClose()}
           >
-            <div className="w-8 h-8 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] flex items-center justify-center font-serif-aesthetic font-bold text-lg shadow-xs group-hover:scale-105 transition-transform">
+            <div className="w-8 h-8 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] flex items-center justify-center font-serif-aesthetic font-bold text-lg shadow-md group-hover:scale-105 transition-all">
               P
             </div>
             <div>
@@ -137,15 +137,15 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
               onClose();
               onOpenNewPageModal();
             }}
-            className="w-full flex items-center justify-center gap-2 py-2 px-3 rounded-xl bg-[var(--accent-soft)] hover:bg-[var(--border-strong)] text-[var(--text-primary)] font-medium text-xs border border-[var(--border-strong)] transition-all shadow-2xs group"
+            className="w-full flex items-center justify-center gap-2 py-2.5 px-3.5 rounded-xl bg-[var(--accent-soft)] hover:bg-[var(--accent)] hover:text-[var(--accent-contrast)] text-[var(--text-primary)] font-semibold text-xs border border-[var(--accent)]/30 transition-all shadow-2xs glass-card-hover group"
           >
-            <Plus className="w-4 h-4 text-[var(--accent)] group-hover:rotate-90 transition-transform duration-200" />
+            <Plus className="w-4 h-4 text-[var(--accent)] group-hover:text-[var(--accent-contrast)] group-hover:rotate-90 transition-transform duration-200" />
             <span>New Page / Tracker</span>
           </button>
         </div>
 
         {/* Navigation links */}
-        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-6">
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-5">
           {/* Main Views */}
           <nav className="space-y-1">
             {mainNav.map((item) => {
@@ -156,10 +156,10 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
                   key={item.name}
                   href={item.href}
                   onClick={() => onClose()}
-                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-colors ${
+                  className={`flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium transition-all ${
                     active
-                      ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-2xs'
-                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-paper-hover)]'
+                      ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-md font-semibold translate-x-0.5'
+                      : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-paper-hover)]/70'
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
@@ -168,8 +168,8 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
                   </div>
                   {item.count !== undefined && (
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-md ${
-                        active ? 'bg-white/20 text-white' : 'bg-[var(--bg-paper-subtle)] text-[var(--text-muted)]'
+                      className={`text-[10px] px-1.5 py-0.5 rounded-md font-semibold ${
+                        active ? 'bg-white/20 text-white' : 'bg-[var(--bg-paper-subtle)] text-[var(--text-muted)] border border-[var(--border-color)]/60'
                       }`}
                     >
                       {item.count}

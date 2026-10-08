@@ -54,7 +54,20 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen flex bg-[var(--bg-main)] text-[var(--text-primary)]">
+    <div className="min-h-screen flex bg-[var(--bg-main)] text-[var(--text-primary)] relative selection:bg-[var(--accent-soft)] selection:text-[var(--accent)]">
+      {/* 3D Glass Ambient Background Lighting Mesh */}
+      <div className="planora-ambient-bg" aria-hidden="true">
+        <div 
+          className="planora-ambient-orb w-[500px] h-[500px] -top-32 -left-32 bg-[var(--accent)]" 
+        />
+        <div 
+          className="planora-ambient-orb w-[600px] h-[600px] top-1/3 -right-48 bg-[var(--accent)]" 
+        />
+        <div 
+          className="planora-ambient-orb w-[450px] h-[450px] -bottom-32 left-1/4 bg-[var(--accent-hover)]" 
+        />
+      </div>
+
       {/* Privacy Passcode Guard */}
       {isLocked && <LockScreen />}
 

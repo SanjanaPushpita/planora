@@ -26,7 +26,9 @@ import {
   CheckCircle2,
   FileText,
   AlertTriangle,
-  Loader2
+  Loader2,
+  Activity,
+  Radio
 } from 'lucide-react';
 
 type SettingsTab = 'appearance' | 'backup' | 'account' | 'preferences';
@@ -419,6 +421,54 @@ export default function SettingsPage() {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* Supabase Keep-Alive & Free Plan Health Card */}
+          <div className="journal-paper p-6 space-y-4 border border-[var(--border-color)]">
+            <div className="flex items-center justify-between border-b border-[var(--border-color)] pb-3">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-emerald-600 dark:text-emerald-400 animate-pulse" />
+                <div>
+                  <h3 className="font-serif-aesthetic text-base font-semibold text-[var(--text-primary)]">
+                    Supabase Free-Plan Keep-Alive
+                  </h3>
+                  <p className="text-xs text-[var(--text-secondary)]">
+                    Automated scheduled heartbeat to prevent Supabase Free tier project pause.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/25 text-emerald-700 dark:text-emerald-300 text-xs font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+                <span>Active</span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] space-y-1">
+                <span className="font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-[var(--accent)]" />
+                  <span>Maintenance Endpoint</span>
+                </span>
+                <p className="text-[11px] text-[var(--text-secondary)] font-mono">
+                  /api/maintenance/supabase-keepalive
+                </p>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] space-y-1">
+                <span className="font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Target Table & RLS</span>
+                </span>
+                <p className="text-[11px] text-[var(--text-secondary)]">
+                  Dedicated <code className="font-mono text-[10px] bg-[var(--bg-paper)] px-1 py-0.5 rounded border border-[var(--border-color)]">system_heartbeat</code> row (zero user data touched).
+                </p>
+              </div>
+            </div>
+
+            <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+              Planora uses a scheduled GitHub Actions workflow (<code className="font-mono text-[10px]">.github/workflows/supabase-keepalive.yml</code>) running once per day with Vercel Protection Bypass to record lightweight heartbeat pings without requiring manual commits or database visits.
+            </p>
           </div>
 
           {/* Reset Starter Area */}

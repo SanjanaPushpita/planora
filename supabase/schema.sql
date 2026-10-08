@@ -664,4 +664,30 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
+-- 17. SYSTEM HEARTBEAT (SUPABASE FREE PLAN KEEP-ALIVE)
+create table if not exists public.system_heartbeat (
+  id text primary key default 'planora-main',
+  last_ping_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  source text default 'keepalive-scheduler',
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.system_heartbeat enable row level security;
+
+-- Read policy allows status checking in settings
+create policy "Allow read access to system_heartbeat"
+  on public.system_heartbeat for select
+  using (true);
+
+-- Upsert policy allows heartbeat update
+create policy "Allow service or authorized update to system_heartbeat"
+  on public.system_heartbeat for all
+  using (true)
+  with check (true);
+
+-- Initial stable heartbeat record
+insert into public.system_heartbeat (id, last_ping_at, source)
+values ('planora-main', now(), 'initial_setup')
+on conflict (id) do nothing;
+
 
