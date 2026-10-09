@@ -27,7 +27,9 @@ import {
   WeeklyReview,
   Goal,
   GoalMilestone,
-  GoalTask
+  GoalTask,
+  DiseaseProfile,
+  DiseaseStudySession
 } from '../types';
 import { DEFAULT_PROFILE } from './seed-data';
 import { calculateNextReview } from '../spaced-repetition';
@@ -37,7 +39,7 @@ interface SearchResult {
   pageId?: string;
   pageTitle: string;
   pageIcon: string;
-  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary' | 'paper' | 'focus' | 'review' | 'goal' | 'milestone' | 'inbox' | 'monthly_review';
+  type: 'page' | 'task' | 'habit' | 'study' | 'note' | 'sprint' | 'knowledge' | 'vocabulary' | 'paper' | 'focus' | 'review' | 'goal' | 'milestone' | 'inbox' | 'monthly_review' | 'disease';
   title: string;
   subtitle?: string;
   url?: string;
@@ -65,6 +67,8 @@ interface StorageContextType {
   trashGoals: Goal[];
   goalMilestones: GoalMilestone[];
   goalTasks: GoalTask[];
+  diseaseProfiles: DiseaseProfile[];
+  diseaseSessions: DiseaseStudySession[];
   saveStatus: 'idle' | 'saving' | 'saved' | 'error';
   walkSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   learningSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
@@ -75,6 +79,7 @@ interface StorageContextType {
   paperSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   reviewSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   goalSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
+  diseaseSaveStatus: 'idle' | 'saving' | 'saved' | 'error' | 'unsynced';
   isLocked: boolean;
   isReady: boolean;
   setSaveStatus: (status: 'idle' | 'saving' | 'saved' | 'error') => void;
@@ -89,6 +94,7 @@ interface StorageContextType {
   refreshPapersData: () => Promise<void>;
   refreshWeeklyReviews: () => Promise<void>;
   refreshGoalsData: () => Promise<void>;
+  refreshDiseaseData: () => Promise<void>;
   saveWalkSession: (session: WalkSession) => Promise<WalkSession>;
   updateWalkSession: (id: string, updates: Partial<WalkSession>) => Promise<WalkSession>;
   deleteWalkSession: (id: string) => Promise<void>;
@@ -132,6 +138,12 @@ interface StorageContextType {
   saveGoalTask: (task: GoalTask) => Promise<GoalTask>;
   updateGoalTask: (id: string, updates: Partial<GoalTask>) => Promise<GoalTask>;
   deleteGoalTask: (id: string) => Promise<void>;
+  saveDiseaseProfile: (profile: DiseaseProfile) => Promise<DiseaseProfile>;
+  updateDiseaseProfile: (id: string, updates: Partial<DiseaseProfile>) => Promise<DiseaseProfile>;
+  deleteDiseaseProfile: (id: string) => Promise<void>;
+  saveDiseaseStudySession: (session: DiseaseStudySession) => Promise<DiseaseStudySession>;
+  updateDiseaseStudySession: (id: string, updates: Partial<DiseaseStudySession>) => Promise<DiseaseStudySession>;
+  deleteDiseaseStudySession: (id: string) => Promise<void>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
   createPage: (params: {
     title: string;
@@ -363,6 +375,26 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     return [];
   });
 
+  const [diseaseProfiles, setDiseaseProfiles] = useState<DiseaseProfile[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_disease_profiles');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
+  const [diseaseSessions, setDiseaseSessions] = useState<DiseaseStudySession[]>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const cached = localStorage.getItem('planora_disease_study_sessions');
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return [];
+  });
+
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
   const [walkSaveStatus, setWalkSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [learningSaveStatus, setLearningSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
@@ -373,6 +405,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
   const [paperSaveStatus, setPaperSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [reviewSaveStatus, setReviewSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [goalSaveStatus, setGoalSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
+  const [diseaseSaveStatus, setDiseaseSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error' | 'unsynced'>('idle');
   const [isLocked, setIsLocked] = useState(() => {
     if (typeof window !== 'undefined') {
       try {
@@ -555,6 +588,23 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     }
   }, [storage]);
 
+  const refreshDiseaseData = useCallback(async () => {
+    try {
+      const [profiles, sessions] = await Promise.all([
+        storage.getDiseaseProfiles(),
+        storage.getDiseaseStudySessions(),
+      ]);
+      setDiseaseProfiles(profiles);
+      setDiseaseSessions(sessions);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('planora_disease_profiles', JSON.stringify(profiles));
+        localStorage.setItem('planora_disease_study_sessions', JSON.stringify(sessions));
+      }
+    } catch (e) {
+      console.error('Failed to load disease data', e);
+    }
+  }, [storage]);
+
   useEffect(() => {
     let mounted = true;
     async function init() {
@@ -570,7 +620,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         refreshFocusData(),
         refreshPapersData(),
         refreshWeeklyReviews(),
-        refreshGoalsData()
+        refreshGoalsData(),
+        refreshDiseaseData()
       ]);
       if (mounted) {
         setIsReady(true);
@@ -585,6 +636,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       refreshPapersData();
       refreshWeeklyReviews();
       refreshGoalsData();
+      refreshDiseaseData();
     };
     if (typeof window !== 'undefined') {
       window.addEventListener('online', handleOnline);
@@ -596,7 +648,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         window.removeEventListener('online', handleOnline);
       }
     };
-  }, [refreshProfile, refreshPages, refreshWalkSessions, refreshLearningData, refreshFocusData, refreshPapersData, refreshWeeklyReviews, refreshGoalsData]);
+  }, [refreshProfile, refreshPages, refreshWalkSessions, refreshLearningData, refreshVocabularyData, refreshInboxData, refreshMonthlyReviews, refreshFocusData, refreshPapersData, refreshWeeklyReviews, refreshGoalsData, refreshDiseaseData]);
 
   const saveWalkSession = async (session: WalkSession): Promise<WalkSession> => {
     setWalkSaveStatus('saving');
@@ -1350,6 +1402,120 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // Disease Discovery Lab Actions
+  const saveDiseaseProfile = async (profile: DiseaseProfile): Promise<DiseaseProfile> => {
+    setDiseaseSaveStatus('saving');
+    try {
+      const saved = await storage.saveDiseaseProfile(profile);
+      setDiseaseProfiles((prev) => {
+        const idx = prev.findIndex(p => p.id === saved.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        }
+        return [saved, ...prev];
+      });
+      setDiseaseSaveStatus('saved');
+      setTimeout(() => setDiseaseSaveStatus('idle'), 1500);
+      return saved;
+    } catch (e) {
+      setDiseaseSaveStatus('error');
+      console.error('Save disease profile error:', e);
+      throw e;
+    }
+  };
+
+  const updateDiseaseProfile = async (id: string, updates: Partial<DiseaseProfile>): Promise<DiseaseProfile> => {
+    setDiseaseSaveStatus('saving');
+    try {
+      const updated = await storage.updateDiseaseProfile(id, updates);
+      setDiseaseProfiles((prev) => prev.map(p => p.id === id ? updated : p));
+      setDiseaseSaveStatus('saved');
+      setTimeout(() => setDiseaseSaveStatus('idle'), 1500);
+      return updated;
+    } catch (e) {
+      setDiseaseSaveStatus('error');
+      console.error('Update disease profile error:', e);
+      throw e;
+    }
+  };
+
+  const deleteDiseaseProfile = async (id: string): Promise<void> => {
+    try {
+      await storage.deleteDiseaseProfile(id);
+      setDiseaseProfiles((prev) => prev.filter(p => p.id !== id));
+      setDiseaseSessions((prev) => prev.filter(s => s.disease_profile_id !== id));
+    } catch (e) {
+      console.error('Delete disease profile error:', e);
+      throw e;
+    }
+  };
+
+  const saveDiseaseStudySession = async (session: DiseaseStudySession): Promise<DiseaseStudySession> => {
+    setDiseaseSaveStatus('saving');
+    try {
+      const saved = await storage.saveDiseaseStudySession(session);
+      setDiseaseSessions((prev) => {
+        const idx = prev.findIndex(s => s.id === saved.id);
+        if (idx >= 0) {
+          const next = [...prev];
+          next[idx] = saved;
+          return next;
+        }
+        return [saved, ...prev];
+      });
+
+      // Also refresh profile if completed
+      if (session.status === 'completed' && session.disease_profile_id) {
+        setDiseaseProfiles((prev) => prev.map(p => {
+          if (p.id === session.disease_profile_id) {
+            return {
+              ...p,
+              last_studied_at: session.completed_at || new Date().toISOString(),
+              study_count: (p.study_count || 0) + 1,
+              review_status: session.review_status || p.review_status || 'learning',
+            };
+          }
+          return p;
+        }));
+      }
+
+      setDiseaseSaveStatus('saved');
+      setTimeout(() => setDiseaseSaveStatus('idle'), 1500);
+      return saved;
+    } catch (e) {
+      setDiseaseSaveStatus('error');
+      console.error('Save disease study session error:', e);
+      throw e;
+    }
+  };
+
+  const updateDiseaseStudySession = async (id: string, updates: Partial<DiseaseStudySession>): Promise<DiseaseStudySession> => {
+    setDiseaseSaveStatus('saving');
+    try {
+      const updated = await storage.updateDiseaseStudySession(id, updates);
+      setDiseaseSessions((prev) => prev.map(s => s.id === id ? updated : s));
+      setDiseaseSaveStatus('saved');
+      setTimeout(() => setDiseaseSaveStatus('idle'), 1500);
+      return updated;
+    } catch (e) {
+      setDiseaseSaveStatus('error');
+      console.error('Update disease study session error:', e);
+      throw e;
+    }
+  };
+
+  const deleteDiseaseStudySession = async (id: string): Promise<void> => {
+    try {
+      await storage.deleteDiseaseStudySession(id);
+      setDiseaseSessions((prev) => prev.filter(s => s.id !== id));
+    } catch (e) {
+      console.error('Delete disease study session error:', e);
+      throw e;
+    }
+  };
+
   const updateProfile = async (updates: Partial<UserProfile>) => {
     setSaveStatus('saving');
     try {
@@ -1783,6 +1949,27 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // Search Disease Profiles (Disease Discovery Lab)
+    for (const dp of diseaseProfiles) {
+      const matchName = dp.name.toLowerCase().includes(q);
+      const matchSynonyms = (dp.synonyms || []).some(s => s.toLowerCase().includes(q));
+      const matchSummary = (dp.summary || '').toLowerCase().includes(q);
+      const matchDoid = (dp.do_id || '').toLowerCase().includes(q);
+      const matchSystems = (dp.body_systems || []).some(s => s.toLowerCase().includes(q));
+
+      if (matchName || matchSynonyms || matchSummary || matchDoid || matchSystems) {
+        results.push({
+          id: `disease-${dp.id}`,
+          pageTitle: dp.name,
+          pageIcon: '🧬',
+          type: 'disease',
+          title: dp.name,
+          subtitle: `Disease Lab • ${dp.body_systems?.join(', ') || 'Medical'} (${dp.study_count || 0} studies)`,
+          url: `/disease-lab?diseaseId=${dp.id}`,
+        });
+      }
+    }
+
     return results;
   };
 
@@ -1813,6 +2000,8 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         trashGoals,
         goalMilestones,
         goalTasks,
+        diseaseProfiles,
+        diseaseSessions,
         saveStatus,
         walkSaveStatus,
         learningSaveStatus,
@@ -1823,6 +2012,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         paperSaveStatus,
         reviewSaveStatus,
         goalSaveStatus,
+        diseaseSaveStatus,
         isLocked,
         isReady,
         setSaveStatus,
@@ -1837,6 +2027,7 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         refreshPapersData,
         refreshWeeklyReviews,
         refreshGoalsData,
+        refreshDiseaseData,
         saveWalkSession,
         updateWalkSession,
         deleteWalkSession,
@@ -1880,6 +2071,12 @@ export function StorageProvider({ children }: { children: React.ReactNode }) {
         saveGoalTask,
         updateGoalTask,
         deleteGoalTask,
+        saveDiseaseProfile,
+        updateDiseaseProfile,
+        deleteDiseaseProfile,
+        saveDiseaseStudySession,
+        updateDiseaseStudySession,
+        deleteDiseaseStudySession,
         updateProfile,
         createPage,
         updatePage,

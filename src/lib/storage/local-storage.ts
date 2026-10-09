@@ -17,7 +17,9 @@ import {
   WeeklyReview,
   Goal,
   GoalMilestone,
-  GoalTask
+  GoalTask,
+  DiseaseProfile,
+  DiseaseStudySession
 } from '../types';
 import { DEFAULT_PROFILE, INITIAL_PAGES, INITIAL_BLOCKS } from './seed-data';
 import { generateId } from '../utils';
@@ -48,6 +50,9 @@ const STORAGE_KEYS = {
   GOAL_MILESTONES: 'planora_goal_milestones',
   GOAL_TASKS: 'planora_goal_tasks',
   GOALS_PENDING_SYNC: 'planora_goals_pending_sync',
+  DISEASE_PROFILES: 'planora_disease_profiles',
+  DISEASE_SESSIONS: 'planora_disease_study_sessions',
+  DISEASE_PENDING_SYNC: 'planora_disease_pending_sync',
 };
 
 export class LocalPlannerStorage implements IPlannerStorage {
@@ -1341,6 +1346,156 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.GOAL_TASKS, tasks.filter(t => t.id !== id));
   }
 
+  // ==========================================
+  // Disease Discovery Lab
+  // ==========================================
+
+  async getDiseaseProfiles(): Promise<DiseaseProfile[]> {
+    this.ensureInitialized();
+    return this.getStored<DiseaseProfile[]>(STORAGE_KEYS.DISEASE_PROFILES, []);
+  }
+
+  async getDiseaseProfileById(id: string): Promise<DiseaseProfile | null> {
+    this.ensureInitialized();
+    const profiles = await this.getDiseaseProfiles();
+    return profiles.find(p => p.id === id) || null;
+  }
+
+  async saveDiseaseProfile(profile: DiseaseProfile): Promise<DiseaseProfile> {
+    this.ensureInitialized();
+    const profiles = this.getStored<DiseaseProfile[]>(STORAGE_KEYS.DISEASE_PROFILES, []);
+    const existingIndex = profiles.findIndex(p => p.id === profile.id);
+    const now = new Date().toISOString();
+
+    const cleanProfile: DiseaseProfile = {
+      ...profile,
+      created_at: profile.created_at || now,
+      updated_at: now,
+    };
+
+    let updatedProfiles: DiseaseProfile[];
+    if (existingIndex >= 0) {
+      updatedProfiles = [...profiles];
+      updatedProfiles[existingIndex] = { ...profiles[existingIndex], ...cleanProfile };
+    } else {
+      updatedProfiles = [cleanProfile, ...profiles];
+    }
+
+    this.setStored(STORAGE_KEYS.DISEASE_PROFILES, updatedProfiles);
+    return cleanProfile;
+  }
+
+  async updateDiseaseProfile(id: string, updates: Partial<DiseaseProfile>): Promise<DiseaseProfile> {
+    this.ensureInitialized();
+    const profiles = this.getStored<DiseaseProfile[]>(STORAGE_KEYS.DISEASE_PROFILES, []);
+    const index = profiles.findIndex(p => p.id === id);
+    if (index === -1) {
+      throw new Error(`Disease profile with ID ${id} not found.`);
+    }
+
+    const updated: DiseaseProfile = {
+      ...profiles[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    const updatedProfiles = [...profiles];
+    updatedProfiles[index] = updated;
+    this.setStored(STORAGE_KEYS.DISEASE_PROFILES, updatedProfiles);
+    return updated;
+  }
+
+  async deleteDiseaseProfile(id: string): Promise<void> {
+    this.ensureInitialized();
+    const profiles = this.getStored<DiseaseProfile[]>(STORAGE_KEYS.DISEASE_PROFILES, []);
+    this.setStored(STORAGE_KEYS.DISEASE_PROFILES, profiles.filter(p => p.id !== id));
+    // Also remove associated study sessions
+    const sessions = this.getStored<DiseaseStudySession[]>(STORAGE_KEYS.DISEASE_SESSIONS, []);
+    this.setStored(STORAGE_KEYS.DISEASE_SESSIONS, sessions.filter(s => s.disease_profile_id !== id));
+  }
+
+  async getDiseaseStudySessions(diseaseProfileId?: string): Promise<DiseaseStudySession[]> {
+    this.ensureInitialized();
+    const sessions = this.getStored<DiseaseStudySession[]>(STORAGE_KEYS.DISEASE_SESSIONS, []);
+    if (diseaseProfileId) {
+      return sessions.filter(s => s.disease_profile_id === diseaseProfileId);
+    }
+    return sessions;
+  }
+
+  async getDiseaseStudySessionById(id: string): Promise<DiseaseStudySession | null> {
+    this.ensureInitialized();
+    const sessions = await this.getDiseaseStudySessions();
+    return sessions.find(s => s.id === id) || null;
+  }
+
+  async saveDiseaseStudySession(session: DiseaseStudySession): Promise<DiseaseStudySession> {
+    this.ensureInitialized();
+    const sessions = this.getStored<DiseaseStudySession[]>(STORAGE_KEYS.DISEASE_SESSIONS, []);
+    const existingIndex = sessions.findIndex(s => s.id === session.id);
+    const now = new Date().toISOString();
+
+    const cleanSession: DiseaseStudySession = {
+      ...session,
+      created_at: session.created_at || now,
+      updated_at: now,
+    };
+
+    let updatedSessions: DiseaseStudySession[];
+    if (existingIndex >= 0) {
+      updatedSessions = [...sessions];
+      updatedSessions[existingIndex] = { ...sessions[existingIndex], ...cleanSession };
+    } else {
+      updatedSessions = [cleanSession, ...sessions];
+    }
+
+    this.setStored(STORAGE_KEYS.DISEASE_SESSIONS, updatedSessions);
+
+    // If completed or updating study count on profile
+    if (cleanSession.status === 'completed' && cleanSession.disease_profile_id) {
+      const profiles = this.getStored<DiseaseProfile[]>(STORAGE_KEYS.DISEASE_PROFILES, []);
+      const pIdx = profiles.findIndex(p => p.id === cleanSession.disease_profile_id);
+      if (pIdx >= 0) {
+        profiles[pIdx] = {
+          ...profiles[pIdx],
+          last_studied_at: cleanSession.completed_at || now,
+          study_count: (profiles[pIdx].study_count || 0) + 1,
+          review_status: cleanSession.review_status || profiles[pIdx].review_status || 'learning',
+          updated_at: now,
+        };
+        this.setStored(STORAGE_KEYS.DISEASE_PROFILES, profiles);
+      }
+    }
+
+    return cleanSession;
+  }
+
+  async updateDiseaseStudySession(id: string, updates: Partial<DiseaseStudySession>): Promise<DiseaseStudySession> {
+    this.ensureInitialized();
+    const sessions = this.getStored<DiseaseStudySession[]>(STORAGE_KEYS.DISEASE_SESSIONS, []);
+    const index = sessions.findIndex(s => s.id === id);
+    if (index === -1) {
+      throw new Error(`Disease study session with ID ${id} not found.`);
+    }
+
+    const updated: DiseaseStudySession = {
+      ...sessions[index],
+      ...updates,
+      updated_at: new Date().toISOString(),
+    };
+
+    const updatedSessions = [...sessions];
+    updatedSessions[index] = updated;
+    this.setStored(STORAGE_KEYS.DISEASE_SESSIONS, updatedSessions);
+    return updated;
+  }
+
+  async deleteDiseaseStudySession(id: string): Promise<void> {
+    this.ensureInitialized();
+    const sessions = this.getStored<DiseaseStudySession[]>(STORAGE_KEYS.DISEASE_SESSIONS, []);
+    this.setStored(STORAGE_KEYS.DISEASE_SESSIONS, sessions.filter(s => s.id !== id));
+  }
+
   // Backup & Restore
   async exportData(): Promise<PlannerBackup> {
     this.ensureInitialized();
@@ -1363,6 +1518,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
       goals: this.getStored<Goal[]>(STORAGE_KEYS.GOALS, []),
       goalMilestones: this.getStored<GoalMilestone[]>(STORAGE_KEYS.GOAL_MILESTONES, []),
       goalTasks: this.getStored<GoalTask[]>(STORAGE_KEYS.GOAL_TASKS, []),
+      diseaseProfiles: this.getStored<DiseaseProfile[]>(STORAGE_KEYS.DISEASE_PROFILES, []),
+      diseaseSessions: this.getStored<DiseaseStudySession[]>(STORAGE_KEYS.DISEASE_SESSIONS, []),
     };
   }
 
@@ -1389,6 +1546,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
       goals: 0,
       milestones: 0,
       tasks: 0,
+      disease_profiles: 0,
+      disease_sessions: 0,
     };
 
     let importedCount = 0;
@@ -1531,6 +1690,18 @@ export class LocalPlannerStorage implements IPlannerStorage {
     importedCount += taskRes.imported;
     skippedCount += taskRes.skipped;
 
+    // 16. Disease Profiles
+    const profileRes = mergeCollection(STORAGE_KEYS.DISEASE_PROFILES, data.diseaseProfiles);
+    summary.disease_profiles = profileRes.imported;
+    importedCount += profileRes.imported;
+    skippedCount += profileRes.skipped;
+
+    // 17. Disease Study Sessions
+    const sessionRes = mergeCollection(STORAGE_KEYS.DISEASE_SESSIONS, data.diseaseSessions);
+    summary.disease_sessions = sessionRes.imported;
+    importedCount += sessionRes.imported;
+    skippedCount += sessionRes.skipped;
+
     return {
       success: true,
       importedCount,
@@ -1558,6 +1729,8 @@ export class LocalPlannerStorage implements IPlannerStorage {
     this.setStored(STORAGE_KEYS.GOALS, []);
     this.setStored(STORAGE_KEYS.GOAL_MILESTONES, []);
     this.setStored(STORAGE_KEYS.GOAL_TASKS, []);
+    this.setStored(STORAGE_KEYS.DISEASE_PROFILES, []);
+    this.setStored(STORAGE_KEYS.DISEASE_SESSIONS, []);
   }
 }
 

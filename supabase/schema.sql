@@ -690,4 +690,100 @@ insert into public.system_heartbeat (id, last_ping_at, source)
 values ('planora-main', now(), 'initial_setup')
 on conflict (id) do nothing;
 
+-- 18. DISEASE PROFILES TABLE (DISEASE DISCOVERY LAB)
+create table if not exists public.disease_profiles (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  name text not null,
+  synonyms text[] default array[]::text[],
+  do_id text default '',
+  medline_plus_id text default '',
+  medline_plus_url text default '',
+  icd11_id text default '',
+  body_systems text[] default array[]::text[],
+  disease_types text[] default array[]::text[],
+  summary text default '',
+  sources jsonb default '[]'::jsonb,
+  is_saved_for_later boolean default false,
+  review_status text default 'learning', -- needs_review, learning, comfortable
+  last_studied_at timestamp with time zone,
+  study_count integer default 0,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.disease_profiles enable row level security;
+
+create policy "Users can view their own disease profiles"
+  on public.disease_profiles for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own disease profiles"
+  on public.disease_profiles for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own disease profiles"
+  on public.disease_profiles for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own disease profiles"
+  on public.disease_profiles for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_disease_profiles_user_id on public.disease_profiles(user_id);
+create index if not exists idx_disease_profiles_name on public.disease_profiles(name);
+create index if not exists idx_disease_profiles_do_id on public.disease_profiles(do_id);
+create index if not exists idx_disease_profiles_is_saved on public.disease_profiles(is_saved_for_later);
+create index if not exists idx_disease_profiles_review_status on public.disease_profiles(review_status);
+
+-- 19. DISEASE STUDY SESSIONS TABLE
+create table if not exists public.disease_study_sessions (
+  id text primary key,
+  user_id uuid references auth.users on delete cascade,
+  disease_profile_id text references public.disease_profiles(id) on delete cascade,
+  disease_name text not null,
+  do_id text default '',
+  body_systems text[] default array[]::text[],
+  disease_types text[] default array[]::text[],
+  target_duration_seconds integer not null default 1200,
+  actual_duration_seconds integer not null default 0,
+  started_at timestamp with time zone not null,
+  completed_at timestamp with time zone,
+  questions jsonb default '[]'::jsonb,
+  overview text default '',
+  notes text default '',
+  key_findings text default '',
+  structured_notes jsonb default '{}'::jsonb,
+  key_facts text[] default array[]::text[],
+  explanation text default '',
+  sources jsonb default '[]'::jsonb,
+  status text not null default 'in_progress', -- in_progress, completed, abandoned
+  review_status text default 'learning',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
+  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+alter table public.disease_study_sessions enable row level security;
+
+create policy "Users can view their own disease study sessions"
+  on public.disease_study_sessions for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own disease study sessions"
+  on public.disease_study_sessions for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own disease study sessions"
+  on public.disease_study_sessions for update
+  using (auth.uid() = user_id);
+
+create policy "Users can delete their own disease study sessions"
+  on public.disease_study_sessions for delete
+  using (auth.uid() = user_id);
+
+create index if not exists idx_disease_study_sessions_user_id on public.disease_study_sessions(user_id);
+create index if not exists idx_disease_study_sessions_profile_id on public.disease_study_sessions(disease_profile_id);
+create index if not exists idx_disease_study_sessions_started_at on public.disease_study_sessions(started_at);
+create index if not exists idx_disease_study_sessions_status on public.disease_study_sessions(status);
+
 

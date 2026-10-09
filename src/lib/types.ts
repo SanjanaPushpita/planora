@@ -613,6 +613,98 @@ export interface MonthlyReview {
   updated_at: string;
 }
 
+// ============================================================================
+// DISEASE DISCOVERY LAB TYPES
+// ============================================================================
+
+export type BodySystemCategory =
+  | 'Brain & Neurology'
+  | 'Cardiovascular / Heart'
+  | 'Kidney & Urinary'
+  | 'Respiratory / Lungs'
+  | 'Digestive / Gastrointestinal'
+  | 'Liver & Biliary'
+  | 'Endocrine & Hormonal'
+  | 'Blood / Hematology'
+  | 'Musculoskeletal'
+  | 'Skin / Dermatology'
+  | 'Eye / Ophthalmology'
+  | 'Ear / Hearing'
+  | 'Reproductive'
+  | 'Immune System'
+  | 'Oral / Dental'
+  | 'Multisystem';
+
+export type DiseaseTypeCategory =
+  | 'Infectious Diseases'
+  | 'Genetic & Rare Diseases'
+  | 'Autoimmune Diseases'
+  | 'Cancer / Neoplastic Diseases'
+  | 'Metabolic Diseases'
+  | 'Degenerative Diseases'
+  | 'Congenital Diseases'
+  | 'Parasitic Diseases'
+  | 'Nutritional Diseases'
+  | 'Neurological Disorders'
+  | 'Mental / Behavioral Disorders'
+  | 'Other';
+
+export type DiseaseReviewStatus = 'needs_review' | 'learning' | 'comfortable';
+
+export interface DiseaseProfile {
+  id: string;
+  user_id?: string;
+  name: string;
+  synonyms?: string[];
+  do_id?: string; // e.g. 'DOID:10652'
+  medline_plus_id?: string;
+  medline_plus_url?: string;
+  icd11_id?: string;
+  body_systems: string[];
+  disease_types: string[];
+  summary?: string;
+  sources?: { title: string; url: string; note?: string }[];
+  is_saved_for_later?: boolean;
+  review_status?: DiseaseReviewStatus;
+  last_studied_at?: string | null;
+  study_count?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DiseaseStudyQuestion {
+  id: string;
+  domain: string;
+  question: string;
+  hint?: string;
+}
+
+export interface DiseaseStudySession {
+  id: string;
+  user_id?: string;
+  disease_profile_id?: string;
+  disease_name: string;
+  do_id?: string;
+  body_systems: string[];
+  disease_types: string[];
+  target_duration_seconds: number;
+  actual_duration_seconds: number;
+  started_at: string;
+  completed_at?: string;
+  questions: DiseaseStudyQuestion[];
+  overview?: string; // rich text
+  notes: string; // rich text
+  key_findings?: string; // rich text
+  structured_notes?: Record<string, string>;
+  key_facts?: string[]; // 3 Key facts active recall
+  explanation?: string; // In your own words
+  sources?: { title: string; url: string; note?: string }[];
+  status: 'in_progress' | 'completed' | 'abandoned';
+  review_status?: DiseaseReviewStatus;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface PlannerBackup {
   app?: string; // 'Planora'
   version: number;
@@ -632,6 +724,8 @@ export interface PlannerBackup {
   goals?: Goal[];
   goalMilestones?: GoalMilestone[];
   goalTasks?: GoalTask[];
+  diseaseProfiles?: DiseaseProfile[];
+  diseaseSessions?: DiseaseStudySession[];
 }
 
 export interface BackupImportResult {
@@ -653,7 +747,10 @@ export interface BackupImportResult {
     goals: number;
     milestones: number;
     tasks: number;
-    [key: string]: number;
+    diseases?: number;
+    disease_sessions?: number;
+    [key: string]: number | undefined;
   };
   message?: string;
 }
+

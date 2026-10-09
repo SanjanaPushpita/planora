@@ -16,7 +16,9 @@ import {
   WeeklyReview,
   Goal,
   GoalMilestone,
-  GoalTask
+  GoalTask,
+  DiseaseProfile,
+  DiseaseStudySession
 } from '../types';
 
 export interface IPlannerStorage {
@@ -130,6 +132,18 @@ export interface IPlannerStorage {
   saveGoalTask(task: GoalTask): Promise<GoalTask>;
   updateGoalTask(id: string, updates: Partial<GoalTask>): Promise<GoalTask>;
   deleteGoalTask(id: string): Promise<void>;
+
+  // Disease Discovery Lab (Profiles & Study Sessions)
+  getDiseaseProfiles(): Promise<DiseaseProfile[]>;
+  getDiseaseProfileById(id: string): Promise<DiseaseProfile | null>;
+  saveDiseaseProfile(profile: DiseaseProfile): Promise<DiseaseProfile>;
+  updateDiseaseProfile(id: string, updates: Partial<DiseaseProfile>): Promise<DiseaseProfile>;
+  deleteDiseaseProfile(id: string): Promise<void>;
+  getDiseaseStudySessions(diseaseProfileId?: string): Promise<DiseaseStudySession[]>;
+  getDiseaseStudySessionById(id: string): Promise<DiseaseStudySession | null>;
+  saveDiseaseStudySession(session: DiseaseStudySession): Promise<DiseaseStudySession>;
+  updateDiseaseStudySession(id: string, updates: Partial<DiseaseStudySession>): Promise<DiseaseStudySession>;
+  deleteDiseaseStudySession(id: string): Promise<void>;
 
   // Backup & Restore
   exportData(): Promise<PlannerBackup>;

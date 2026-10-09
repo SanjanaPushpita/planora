@@ -17,7 +17,9 @@ import {
   WeeklyReview,
   Goal,
   GoalMilestone,
-  GoalTask
+  GoalTask,
+  DiseaseProfile,
+  DiseaseStudySession
 } from '../types';
 import { supabase, isSupabaseConfigured } from '../../supabase/client';
 import { localPlannerStorage } from './local-storage';
@@ -2410,6 +2412,331 @@ export class SupabasePlannerStorage implements IPlannerStorage {
     }
   }
 
+  // ==========================================
+  // Disease Discovery Lab
+  // ==========================================
+
+  async getDiseaseProfiles(): Promise<DiseaseProfile[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getDiseaseProfiles();
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getDiseaseProfiles();
+
+      const { data, error } = await supabase
+        .from('disease_profiles')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false });
+
+      if (error || !data) {
+        console.error('[Supabase getDiseaseProfiles error]', error);
+        return this.fallback.getDiseaseProfiles();
+      }
+
+      return data as DiseaseProfile[];
+    } catch (err) {
+      console.error('[Supabase getDiseaseProfiles catch]', err);
+      return this.fallback.getDiseaseProfiles();
+    }
+  }
+
+  async getDiseaseProfileById(id: string): Promise<DiseaseProfile | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getDiseaseProfileById(id);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getDiseaseProfileById(id);
+
+      const { data, error } = await supabase
+        .from('disease_profiles')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        return this.fallback.getDiseaseProfileById(id);
+      }
+
+      return data as DiseaseProfile;
+    } catch (err) {
+      return this.fallback.getDiseaseProfileById(id);
+    }
+  }
+
+  async saveDiseaseProfile(profile: DiseaseProfile): Promise<DiseaseProfile> {
+    const localSaved = await this.fallback.saveDiseaseProfile(profile);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const now = new Date().toISOString();
+      const payload = {
+        ...profile,
+        user_id: user.id,
+        updated_at: now,
+      };
+
+      const { data, error } = await supabase
+        .from('disease_profiles')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase saveDiseaseProfile error]', error);
+        return localSaved;
+      }
+
+      return data as DiseaseProfile;
+    } catch (err) {
+      console.error('[Supabase saveDiseaseProfile catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateDiseaseProfile(id: string, updates: Partial<DiseaseProfile>): Promise<DiseaseProfile> {
+    const localUpdated = await this.fallback.updateDiseaseProfile(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('disease_profiles')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateDiseaseProfile error]', error);
+        return localUpdated;
+      }
+
+      return data as DiseaseProfile;
+    } catch (err) {
+      console.error('[Supabase updateDiseaseProfile catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteDiseaseProfile(id: string): Promise<void> {
+    await this.fallback.deleteDiseaseProfile(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('disease_profiles')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase deleteDiseaseProfile error]', error);
+    } catch (err) {
+      console.error('[Supabase deleteDiseaseProfile catch]', err);
+    }
+  }
+
+  async getDiseaseStudySessions(diseaseProfileId?: string): Promise<DiseaseStudySession[]> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getDiseaseStudySessions(diseaseProfileId);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getDiseaseStudySessions(diseaseProfileId);
+
+      let query = supabase
+        .from('disease_study_sessions')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('started_at', { ascending: false });
+
+      if (diseaseProfileId) {
+        query = query.eq('disease_profile_id', diseaseProfileId);
+      }
+
+      const { data, error } = await query;
+
+      if (error || !data) {
+        console.error('[Supabase getDiseaseStudySessions error]', error);
+        return this.fallback.getDiseaseStudySessions(diseaseProfileId);
+      }
+
+      return data as DiseaseStudySession[];
+    } catch (err) {
+      console.error('[Supabase getDiseaseStudySessions catch]', err);
+      return this.fallback.getDiseaseStudySessions(diseaseProfileId);
+    }
+  }
+
+  async getDiseaseStudySessionById(id: string): Promise<DiseaseStudySession | null> {
+    if (!isSupabaseConfigured || !supabase) {
+      return this.fallback.getDiseaseStudySessionById(id);
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return this.fallback.getDiseaseStudySessionById(id);
+
+      const { data, error } = await supabase
+        .from('disease_study_sessions')
+        .select('*')
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (error || !data) {
+        return this.fallback.getDiseaseStudySessionById(id);
+      }
+
+      return data as DiseaseStudySession;
+    } catch (err) {
+      return this.fallback.getDiseaseStudySessionById(id);
+    }
+  }
+
+  async saveDiseaseStudySession(session: DiseaseStudySession): Promise<DiseaseStudySession> {
+    const localSaved = await this.fallback.saveDiseaseStudySession(session);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localSaved;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localSaved;
+
+      const now = new Date().toISOString();
+      const payload = {
+        ...session,
+        user_id: user.id,
+        updated_at: now,
+      };
+
+      const { data, error } = await supabase
+        .from('disease_study_sessions')
+        .upsert(payload)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase saveDiseaseStudySession error]', error);
+        return localSaved;
+      }
+
+      // If completed, update study count on profile
+      if (session.status === 'completed' && session.disease_profile_id) {
+        const { data: profile } = await supabase
+          .from('disease_profiles')
+          .select('study_count')
+          .eq('id', session.disease_profile_id)
+          .eq('user_id', user.id)
+          .single();
+
+        const currentCount = profile?.study_count || 0;
+        await supabase
+          .from('disease_profiles')
+          .update({
+            study_count: currentCount + 1,
+            last_studied_at: session.completed_at || now,
+            review_status: session.review_status || 'learning',
+            updated_at: now,
+          })
+          .eq('id', session.disease_profile_id)
+          .eq('user_id', user.id);
+      }
+
+      return data as DiseaseStudySession;
+    } catch (err) {
+      console.error('[Supabase saveDiseaseStudySession catch]', err);
+      return localSaved;
+    }
+  }
+
+  async updateDiseaseStudySession(id: string, updates: Partial<DiseaseStudySession>): Promise<DiseaseStudySession> {
+    const localUpdated = await this.fallback.updateDiseaseStudySession(id, updates);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return localUpdated;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return localUpdated;
+
+      const { data, error } = await supabase
+        .from('disease_study_sessions')
+        .update({
+          ...updates,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', id)
+        .eq('user_id', user.id)
+        .select()
+        .single();
+
+      if (error || !data) {
+        console.error('[Supabase updateDiseaseStudySession error]', error);
+        return localUpdated;
+      }
+
+      return data as DiseaseStudySession;
+    } catch (err) {
+      console.error('[Supabase updateDiseaseStudySession catch]', err);
+      return localUpdated;
+    }
+  }
+
+  async deleteDiseaseStudySession(id: string): Promise<void> {
+    await this.fallback.deleteDiseaseStudySession(id);
+
+    if (!isSupabaseConfigured || !supabase) {
+      return;
+    }
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('disease_study_sessions')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', user.id);
+
+      if (error) console.error('[Supabase deleteDiseaseStudySession error]', error);
+    } catch (err) {
+      console.error('[Supabase deleteDiseaseStudySession catch]', err);
+    }
+  }
+
+  // Backup & Restore
   async exportData(): Promise<PlannerBackup> {
     if (!isSupabaseConfigured || !supabase) {
       return this.fallback.exportData();
@@ -2436,7 +2763,9 @@ export class SupabasePlannerStorage implements IPlannerStorage {
         weekly,
         goals,
         milestones,
-        tasks
+        tasks,
+        diseaseProfiles,
+        diseaseSessions
       ] = await Promise.all([
         this.getProfile(),
         this.getPages(true),
@@ -2452,6 +2781,8 @@ export class SupabasePlannerStorage implements IPlannerStorage {
         this.getGoals(true),
         this.fallback.exportData().then(d => d.goalMilestones || []),
         this.getGoalTasks(),
+        this.getDiseaseProfiles(),
+        this.getDiseaseStudySessions(),
       ]);
 
       // Collect all page blocks
@@ -2480,6 +2811,8 @@ export class SupabasePlannerStorage implements IPlannerStorage {
         goals,
         goalMilestones: milestones,
         goalTasks: tasks,
+        diseaseProfiles,
+        diseaseSessions,
       };
     } catch (err) {
       console.error('[Supabase exportData exception, fallback to local]', err);
@@ -2532,6 +2865,16 @@ export class SupabasePlannerStorage implements IPlannerStorage {
       if (Array.isArray(data.researchPapers)) {
         for (const p of data.researchPapers) {
           await this.saveResearchPaper(p).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.diseaseProfiles)) {
+        for (const dp of data.diseaseProfiles) {
+          await this.saveDiseaseProfile(dp).catch(() => {});
+        }
+      }
+      if (Array.isArray(data.diseaseSessions)) {
+        for (const ds of data.diseaseSessions) {
+          await this.saveDiseaseStudySession(ds).catch(() => {});
         }
       }
     } catch (err) {
