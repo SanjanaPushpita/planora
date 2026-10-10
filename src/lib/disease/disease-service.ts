@@ -140,7 +140,7 @@ export async function searchDiseases(
     ok: true,
     data: {
       query: trimmed,
-      totalCount: doRes.data.count,
+      totalCount: doRes.data.totalCount ?? doRes.data.count,
       count: deduplicated.length,
       results: deduplicated,
       medlinePlusCandidates,
@@ -367,6 +367,7 @@ export async function getDiseaseCandidates(
     Math.max(1, typeof options.limit === 'number' ? options.limit : DEFAULT_CANDIDATE_LIMIT),
     MAX_CANDIDATE_LIMIT
   );
+  const startPage = Math.max(1, typeof options.startPage === 'number' ? options.startPage : 1);
   const pageBudget = Math.min(
     Math.max(1, typeof options.maxPages === 'number' ? options.maxPages : DEFAULT_PAGE_BUDGET),
     MAX_PAGE_BUDGET
@@ -374,12 +375,12 @@ export async function getDiseaseCandidates(
   const timeoutMs = options.timeoutMs;
   const seedQuery = options.seedQuery ? options.seedQuery.trim() : '';
 
-  // Public cache check
-  const bsKey = filters.bodySystems.sort().join('+') || 'any';
-  const dtKey = filters.diseaseTypes.sort().join('+') || 'any';
+  // Public cache check - deterministic key with sorted filters, budgets, and start page
+  const bsKey = Array.from(new Set(filters.bodySystems)).sort().join('+') || 'any';
+  const dtKey = Array.from(new Set(filters.diseaseTypes)).sort().join('+') || 'any';
   const cacheKey = createCacheKey(
     'category',
-    `candidates:${bsKey}:${dtKey}:${targetLimit}:${seedQuery.toLowerCase()}`
+    `candidates:${bsKey}:${dtKey}:${startPage}:${pageBudget}:${targetLimit}:${seedQuery.toLowerCase()}`
   );
 
   if (!options.skipCache) {
@@ -390,7 +391,9 @@ export async function getDiseaseCandidates(
   }
 
   const candidateMap = new Map<string, ExternalDisease>();
+  const seenListingIds = new Set<string>();
   let totalEvaluated = 0;
+  let pagesEvaluated = 0;
   let poolTruncated = false;
 
   // 1. If seed query is provided, evaluate targeted search candidates first
@@ -403,6 +406,7 @@ export async function getDiseaseCandidates(
     if (searchRes.ok) {
       for (const term of searchRes.data.results) {
         totalEvaluated++;
+        seenListingIds.add(term.externalId);
         if (matchesCategoryFilters(term, filters)) {
           candidateMap.set(term.externalId, term);
           if (candidateMap.size >= targetLimit) break;
@@ -411,9 +415,11 @@ export async function getDiseaseCandidates(
     }
   }
 
+  let totalUpstreamPages = 1;
+
   // 2. Discover via documented GET /terms endpoint up to page budget
-  let currentPage = 1;
-  while (candidateMap.size < targetLimit && currentPage <= pageBudget) {
+  let currentPage = startPage;
+  while (candidateMap.size < targetLimit && pagesEvaluated < pageBudget) {
     const listingRes = await getDiseaseOntologyTerms({
       page: currentPage,
       limit: 50,
@@ -423,14 +429,27 @@ export async function getDiseaseCandidates(
 
     if (!listingRes.ok) {
       // If initial page failed completely and no candidates found, return error
-      if (candidateMap.size === 0 && currentPage === 1) {
+      if (candidateMap.size === 0 && pagesEvaluated === 0) {
         return listingRes;
       }
       break;
     }
 
+    pagesEvaluated++;
     const { terms, pageCount } = listingRes.data;
+    totalUpstreamPages = pageCount;
     if (terms.length === 0) break;
+
+    // Detect if upstream repeated a page or returned all already-seen terms
+    const hasNewTerms = terms.some((t) => !seenListingIds.has(t.externalId));
+    if (!hasNewTerms) {
+      // Upstream repeated page or exhausted; stop safely
+      break;
+    }
+
+    for (const t of terms) {
+      seenListingIds.add(t.externalId);
+    }
 
     for (const term of terms) {
       totalEvaluated++;
@@ -451,13 +470,14 @@ export async function getDiseaseCandidates(
     currentPage++;
   }
 
-  if (candidateMap.size >= targetLimit) {
+  if (candidateMap.size >= targetLimit || (pagesEvaluated >= pageBudget && currentPage < totalUpstreamPages)) {
     poolTruncated = true;
   }
 
   const result: CandidateDiscoveryResult = {
     candidates: Array.from(candidateMap.values()),
     totalEvaluated,
+    pagesEvaluated,
     poolTruncated,
     fromCache: false,
     appliedFilters: filters,

@@ -328,11 +328,11 @@ export async function searchDiseaseOntology(
     }
   }
 
-  const url = `${baseUrl}/terms/search`;
+  const url = `${baseUrl}/terms/search?page=${page}`;
   const requestBody = JSON.stringify({
-    search: trimmed,
-    page,
-    limit,
+    data: {
+      names: [trimmed],
+    },
   });
 
   const res = await fetchWithTimeout(
@@ -389,8 +389,13 @@ export async function searchDiseaseOntology(
     }
   }
 
+  const upstreamTotal = typeof (json as { result_count?: unknown })?.result_count === 'number'
+    ? (json as { result_count: number }).result_count
+    : normalizedList.length;
+
   const searchResult: DiseaseSearchResult = {
     query: trimmed,
+    totalCount: upstreamTotal,
     count: normalizedList.length,
     results: normalizedList,
     fromCache: false,

@@ -30,10 +30,24 @@ This roadmap defines the sequential development phases for the **Planora Disease
   - Injected RNG support for deterministic verification.
   - Post-selection enrichment applied only to the chosen disease.
 
-### B. Phase 2D: Integration Checks & Unresolved Source Compatibility
-- End-to-end integration verification across Disease Ontology and MedlinePlus clients under simulated and live network conditions.
-- Verification of shared IP rate limiting constraints (NLM 85 requests/min, DO query bounds).
-- Edge-case audits: rare disease taxonomy gaps, Spanish language fallbacks, and MeSH xref coverage.
+### B. Phase 2D: Integration Checks & Live Source Compatibility (Completed)
+- **Verified Source Contract (Disease Ontology API v1.0.0 / OpenAPI Specification)**:
+  - `POST /terms/search`: Request body must be `{ data: { names: [string] } }`. Pagination is via query parameter `?page=${page}` (1-indexed). The old top-level `search` property caused HTTP 400 schema validation errors (`additionalProperties: false`). Response envelope: `{ page, page_count, page_size, result_count, results: Term[] }`.
+  - `GET /terms`: Documented listing endpoint with fixed `page_size: 20` (defaults to 50 if requested). Query param `?page=1` is 1-indexed. Verified subsequent pages return completely distinct DOIDs without ID overlap.
+  - `GET /terms/{termId}`: Strictly requires the `DOID:` prefix URL-encoded (`DOID%3A0001816`). Bare numeric strings return HTTP 400.
+  - Normal text search behavior: Exact/substring token matching across name, synonyms, and identifiers. Upstream total count (`result_count`) preserved separately from deduplicated/filtered candidate counts.
+- **Cache Isolation & Refill Advancement**:
+  - Discovery cache keys deterministically include `startPage`, `maxPages`, `targetLimit`, `seedQuery`, and sorted/deduplicated category filters (`candidates:${bsKey}:${dtKey}:${startPage}:${maxPages}:${limit}:${seed}`).
+  - Caller exclusions, user IDs, and recent study history are strictly excluded from shared/public caches.
+  - Candidate discovery accurately distinguishes discovery-budget truncation (`pagesEvaluated >= pageBudget && currentPage < totalUpstreamPages`) from true ontology exhaustion (`currentPage >= totalUpstreamPages` or repeated pages).
+  - Bounded refill safely advances `startPage` past explored pages (`(pagesEvaluated || 3) + 1`) to reach previously unexplored terms.
+- **Verification Outcomes**:
+  - Automated test suite: 82/82 passing tests across 13 test suites (100% pass rate, mock-verified).
+  - Typecheck (`npx tsc --noEmit`): 0 errors.
+  - Linter (`npm run lint`): 0 errors (0 new warnings; 3 pre-existing warnings in unrelated pages).
+  - Production build (`npm run build`): Successfully built 27 static and dynamic Next.js routes.
+  - Opt-in live smoke verification: Live searches (`asthma`, `diabetes`), 2-page pagination (0 ID overlap), detail lookup (`DOID:2841`) with live MedlinePlus enrichment, and targeted category discovery all verified live.
+  - Data safety: Zero production database migrations, Supabase resets, table alterations, or user data modifications performed.
 
 ### C. Phase 3: Disease Lab UI & Study Flow
 - Disease Lab UI components:

@@ -106,18 +106,20 @@ export async function getRandomDisease(
   );
 
   if (eligible.length === 0 && refillBudget > 0 && candidatesRes.data.poolTruncated) {
+    const nextStartPage = (candidatesRes.data.pagesEvaluated || 3) + 1;
     const refillRes = await getDiseaseCandidates({
       bodySystems: options.bodySystems,
       diseaseTypes: options.diseaseTypes,
       category: options.category,
-      limit: poolLimit + refillBudget * 25,
-      maxPages: refillBudget + 3,
+      limit: poolLimit,
+      startPage: nextStartPage,
+      maxPages: refillBudget,
       timeoutMs: options.timeoutMs,
-      skipCache: true, // Bypass cache to evaluate deeper pages
+      skipCache: true, // Advance past initial page cache to evaluate unexplored pages
     });
 
     if (refillRes.ok) {
-      poolSize = refillRes.data.candidates.length;
+      poolSize += refillRes.data.candidates.length;
       eligible = refillRes.data.candidates.filter(
         (c) => !excludedSet.has(normalizeDoid(c.externalId))
       );
@@ -129,8 +131,7 @@ export async function getRandomDisease(
     return {
       ok: false,
       error: 'NO_UNSEEN_DISEASE',
-      message:
-        'All available candidate diseases matching these category filters have already been studied or excluded.',
+      message: `All available candidate diseases within the explored candidate pool (${poolSize} candidates evaluated) have already been studied or excluded.`,
       poolSize,
       eligibleCount: 0,
     };

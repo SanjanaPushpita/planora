@@ -72,11 +72,17 @@ describe('Unified Disease Service Test Suite', () => {
         const urlStr = url.toString();
         if (urlStr.includes('/terms/search')) {
           return new Response(
-            JSON.stringify([
-              sampleDoTerm,
-              { ...sampleDoTerm }, // Duplicate record
-            ]),
-            { status: 200 }
+            JSON.stringify({
+              page: 1,
+              page_count: 1,
+              page_size: 20,
+              result_count: 2,
+              results: [
+                sampleDoTerm,
+                { ...sampleDoTerm }, // Duplicate record
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
           );
         }
         return new Response('Not found', { status: 404 });
@@ -89,7 +95,7 @@ describe('Unified Disease Service Test Suite', () => {
         assert.strictEqual(res.data.results[0].externalId, 'DOID:2841');
         assert.strictEqual(res.data.results[0].source, 'Disease Ontology');
         assert.strictEqual(res.data.count, 1);
-        assert.strictEqual(res.data.totalCount, 1);
+        assert.strictEqual(res.data.totalCount, 2);
       }
     });
 
@@ -113,7 +119,16 @@ describe('Unified Disease Service Test Suite', () => {
       globalThis.fetch = (async (url: string | URL | Request) => {
         const urlStr = url.toString();
         if (urlStr.includes('/terms/search')) {
-          return new Response(JSON.stringify([sampleDoTerm]), { status: 200 });
+          return new Response(
+            JSON.stringify({
+              page: 1,
+              page_count: 1,
+              page_size: 20,
+              result_count: 1,
+              results: [sampleDoTerm],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
         }
         if (urlStr.includes('wsearch.nlm.nih.gov')) {
           return new Response(sampleMedlineTopicXml, { status: 200 });
@@ -379,6 +394,73 @@ describe('Unified Disease Service Test Suite', () => {
       assert.strictEqual(res2.ok, true);
       assert.strictEqual(fetchCount, 1); // Not fetched again
       if (res2.ok) assert.strictEqual(res2.fromCache, true);
+    });
+
+    it('12. Stable identity on DOID lookup: missing supplied DOID returns NOT_FOUND and does not silently fall back to a different label', async () => {
+      globalThis.fetch = (async (url: string | URL | Request) => {
+        const urlStr = url.toString();
+        // If lookup for DOID:9999999 is requested
+        if (urlStr.includes('9999999')) {
+          return new Response('Not found', { status: 404 });
+        }
+        // Label endpoint has "asthma"
+        if (urlStr.includes('/terms/label')) {
+          return new Response(JSON.stringify(sampleDoTerm), { status: 200 });
+        }
+        return new Response('Not found', { status: 404 });
+      }) as typeof fetch;
+
+      // Passing an explicit DOID must not silently fall back to a label
+      const res = await getDiseaseDetails('DOID:9999999');
+      assert.strictEqual(res.ok, false);
+      if (!res.ok) {
+        assert.strictEqual(res.error, 'NOT_FOUND');
+      }
+    });
+
+    it('13. Cache isolation: differently budgeted requests or different startPages do not collide in cache', async () => {
+      let fetchCount = 0;
+      globalThis.fetch = (async () => {
+        fetchCount++;
+        return new Response(JSON.stringify(mockTermsListing), { status: 200 });
+      }) as typeof fetch;
+
+      // Request with maxPages: 1, startPage: 1
+      const res1 = await getDiseaseCandidates({
+        bodySystems: ['Brain & Neurology'],
+        maxPages: 1,
+        startPage: 1,
+      });
+      assert.strictEqual(res1.ok, true);
+      assert.strictEqual(fetchCount, 1);
+
+      // Request with maxPages: 2, startPage: 2 (different page budget and start page)
+      const res2 = await getDiseaseCandidates({
+        bodySystems: ['Brain & Neurology'],
+        maxPages: 2,
+        startPage: 2,
+      });
+      assert.strictEqual(res2.ok, true);
+      // Must not collide with res1's cache entry
+      assert.strictEqual(fetchCount, 2);
+    });
+
+    it('14. Repeated page detection stops safely without infinite loops', async () => {
+      let pageCallCount = 0;
+      globalThis.fetch = (async () => {
+        pageCallCount++;
+        // Always return the exact same items on every page, claiming 5 total pages exist
+        return new Response(JSON.stringify({ ...mockTermsListing, page_count: 5 }), { status: 200 });
+      }) as typeof fetch;
+
+      const res = await getDiseaseCandidates({
+        maxPages: 5,
+        limit: 100, // Wants 100 items, but upstream only has 3 repeated items
+      });
+
+      assert.strictEqual(res.ok, true);
+      // Stopped after detecting repeated page on page 2
+      assert.strictEqual(pageCallCount, 2);
     });
   });
 });

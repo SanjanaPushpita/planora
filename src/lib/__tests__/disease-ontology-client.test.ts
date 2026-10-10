@@ -53,15 +53,21 @@ describe('Disease Ontology API Client Test Suite', () => {
       capturedUrl = url.toString();
       capturedOptions = init;
       return new Response(
-        JSON.stringify([
-          {
-            doid: 'DOID:10652',
-            name: 'Alzheimer disease',
-            definition: 'A progressive neurodegenerative disease characterized by loss of memory.',
-            synonyms: ['Alzheimer dementia', 'AD'],
-            xrefs: ['ICD10CM:G30', 'MESH:D000544', 'OMIM:104300'],
-          },
-        ]),
+        JSON.stringify({
+          page: 1,
+          page_count: 1,
+          page_size: 20,
+          result_count: 1,
+          results: [
+            {
+              id: 'DOID:10652',
+              name: 'Alzheimer disease',
+              definition: 'A progressive neurodegenerative disease characterized by loss of memory.',
+              synonyms: ['Alzheimer dementia', 'AD'],
+              xrefs: ['ICD10CM:G30', 'MESH:D000544', 'OMIM:104300'],
+            },
+          ],
+        }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
     }) as unknown as typeof fetch;
@@ -69,13 +75,13 @@ describe('Disease Ontology API Client Test Suite', () => {
     const res = await searchDiseaseOntology('alzheimer', { page: 1, limit: 10, skipCache: true });
     assert.strictEqual(res.ok, true);
     if (res.ok) {
-      assert.strictEqual(capturedUrl.endsWith('/terms/search'), true);
+      assert.strictEqual(capturedUrl.includes('/terms/search?page=1'), true);
       assert.strictEqual(capturedOptions?.method, 'POST');
       const body = JSON.parse(capturedOptions?.body as string);
-      assert.strictEqual(body.search, 'alzheimer');
-      assert.strictEqual(body.limit, 10);
+      assert.deepStrictEqual(body, { data: { names: ['alzheimer'] } });
 
       assert.strictEqual(res.data.count, 1);
+      assert.strictEqual(res.data.totalCount, 1);
       const disease = res.data.results[0];
       assert.strictEqual(disease.externalId, 'DOID:10652');
       assert.strictEqual(disease.name, 'Alzheimer disease');

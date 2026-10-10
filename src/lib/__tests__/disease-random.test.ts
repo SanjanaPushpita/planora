@@ -235,4 +235,66 @@ describe('Disease Random Selection & Repeat Prevention Suite', () => {
       assert.strictEqual(res.disease.medlinePlusUrl, 'https://medlineplus.gov/asthma.html');
     }
   });
+
+  it('8. Refill advances startPage: when initial candidates are excluded, refill fetches unexplored pages and selects newly discovered disease', async () => {
+    const capturedPages: number[] = [];
+
+    globalThis.fetch = (async (url: string | URL | Request) => {
+      const urlStr = url.toString();
+      if (urlStr.includes('/terms')) {
+        const parsed = new URL(urlStr);
+        const pageNum = parseInt(parsed.searchParams.get('page') || '1', 10);
+        capturedPages.push(pageNum);
+
+        if (pageNum <= 3) {
+          // Subsequent pages return different IDs
+          return new Response(
+            JSON.stringify({
+              page: pageNum,
+              page_count: 5,
+              page_size: 50,
+              result_count: 50,
+              results: [
+                pageNum === 1
+                  ? mockTermsListing.results[0] // Alzheimer (10652)
+                  : pageNum === 2
+                  ? mockTermsListing.results[1] // Asthma (2841)
+                  : { doid: 'DOID:99999', name: 'Other condition', definition: 'Placeholder' },
+              ],
+            }),
+            { status: 200 }
+          );
+        } else {
+          // Deeper refill page returns Breast Cancer (1612)
+          return new Response(
+            JSON.stringify({
+              page: pageNum,
+              page_count: 5,
+              page_size: 50,
+              result_count: 50,
+              results: [
+                mockTermsListing.results[2], // Breast cancer (unseen)
+              ],
+            }),
+            { status: 200 }
+          );
+        }
+      }
+      return new Response('Not found', { status: 404 });
+    }) as typeof fetch;
+
+    // Initial diseases are excluded
+    const res = await getRandomDisease({
+      excludedDiseaseIds: ['DOID:10652', 'DOID:2841', 'DOID:99999'],
+      refillBudget: 2,
+      enrich: false,
+    });
+
+    assert.strictEqual(res.ok, true);
+    if (res.ok) {
+      assert.strictEqual(res.disease.externalId, 'DOID:1612');
+      // Confirmed refill queried deeper page (> 3)
+      assert.ok(capturedPages.some((p) => p > 3));
+    }
+  });
 });

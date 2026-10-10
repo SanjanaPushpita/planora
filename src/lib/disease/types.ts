@@ -77,6 +77,7 @@ export interface CandidateDiscoveryOptions {
   diseaseTypes?: DiseaseTypeCategory[];
   category?: DiseaseCategory | string;
   limit?: number;
+  startPage?: number;
   maxPages?: number;
   timeoutMs?: number;
   skipCache?: boolean;
@@ -86,6 +87,7 @@ export interface CandidateDiscoveryOptions {
 export interface CandidateDiscoveryResult {
   candidates: ExternalDisease[];
   totalEvaluated: number;
+  pagesEvaluated?: number;
   poolTruncated: boolean;
   fromCache?: boolean;
   appliedFilters: {
@@ -142,6 +144,7 @@ export interface DiseaseCandidateOptions {
 
 export interface DiseaseSearchResult {
   query: string;
+  totalCount?: number;
   count: number;
   results: NormalizedDisease[];
   fromCache?: boolean;
