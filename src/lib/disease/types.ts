@@ -17,6 +17,13 @@ export interface DiseaseApiError {
   statusCode?: number;
 }
 
+export type EnrichmentStatus =
+  | 'enriched'
+  | 'unmatched'
+  | 'ambiguous'
+  | 'unavailable'
+  | 'skipped';
+
 export interface ExternalDisease {
   externalId: string; // e.g. "DOID:10652"
   name: string;
@@ -29,6 +36,9 @@ export interface ExternalDisease {
   medlinePlusUrl?: string;
   medlinePlusSummary?: string;
   medlinePlusGroups?: string[];
+  enrichmentStatus?: EnrichmentStatus;
+  enrichmentBasis?: string;
+  matchedTopicId?: string;
   crossReferences?: Record<string, string[]>;
   rawMetadata?: Record<string, unknown>;
 }
@@ -38,6 +48,83 @@ export type NormalizedDisease = ExternalDisease;
 export type DiseaseDetails = ExternalDisease;
 
 export type DiseaseCategory = BodySystemCategory | DiseaseTypeCategory | 'Surprise Me';
+
+export interface UnifiedSearchOptions {
+  page?: number;
+  limit?: number;
+  timeoutMs?: number;
+  skipCache?: boolean;
+  includeMedlinePlusCandidates?: boolean;
+}
+
+export interface UnifiedSearchResult {
+  query: string;
+  totalCount: number;
+  count: number;
+  results: ExternalDisease[];
+  medlinePlusCandidates?: MedlinePlusTopic[];
+  fromCache?: boolean;
+}
+
+export interface DiseaseDetailOptions {
+  enrich?: boolean;
+  timeoutMs?: number;
+  skipCache?: boolean;
+}
+
+export interface CandidateDiscoveryOptions {
+  bodySystems?: BodySystemCategory[];
+  diseaseTypes?: DiseaseTypeCategory[];
+  category?: DiseaseCategory | string;
+  limit?: number;
+  maxPages?: number;
+  timeoutMs?: number;
+  skipCache?: boolean;
+  seedQuery?: string;
+}
+
+export interface CandidateDiscoveryResult {
+  candidates: ExternalDisease[];
+  totalEvaluated: number;
+  poolTruncated: boolean;
+  fromCache?: boolean;
+  appliedFilters: {
+    bodySystems: BodySystemCategory[];
+    diseaseTypes: DiseaseTypeCategory[];
+  };
+}
+
+export interface RandomSelectionOptions {
+  bodySystems?: BodySystemCategory[];
+  diseaseTypes?: DiseaseTypeCategory[];
+  category?: DiseaseCategory | string;
+  excludedDiseaseIds?: string[];
+  recentDiseaseIds?: string[];
+  currentDiseaseId?: string;
+  refillBudget?: number;
+  enrich?: boolean;
+  rng?: () => number;
+  candidateLimit?: number;
+  timeoutMs?: number;
+}
+
+export type RandomSelectionResult =
+  | {
+      ok: true;
+      disease: ExternalDisease;
+      canonicalKey: string;
+      poolSize: number;
+      eligibleCount: number;
+      coverageLimitationNotice: string;
+      enrichmentStatus?: EnrichmentStatus;
+    }
+  | {
+      ok: false;
+      error: 'NO_UNSEEN_DISEASE' | 'EMPTY_CANDIDATE_POOL' | 'DISEASE_SOURCE_UNAVAILABLE';
+      message: string;
+      poolSize: number;
+      eligibleCount: number;
+    };
 
 export interface RandomDiseaseOptions {
   category?: DiseaseCategory | string;

@@ -159,6 +159,11 @@ export function normalizeDiseaseOntologyTerm(raw: unknown): ExternalDisease | nu
   const name = typeof nameVal === 'string' ? nameVal.trim() : '';
   if (!name) return null;
 
+  // Exclude obsolete / non-disease terms
+  if (term.is_obsolete === true || term.obsolete === true || name.toLowerCase().startsWith('obsolete ')) {
+    return null;
+  }
+
   // Extract Synonyms, Definition, Cross-references
   const synonyms = normalizeSynonyms(term.synonyms || term.synonym);
   const definition = normalizeDefinition(term.definition || term.def);
@@ -613,3 +618,112 @@ export async function getDiseaseOntologyInfo(
 
   return { ok: true, data, fromCache: false };
 }
+
+export interface DiseaseOntologyTermsOptions {
+  page?: number;
+  limit?: number;
+  timeoutMs?: number;
+  baseUrl?: string;
+  skipCache?: boolean;
+}
+
+export interface DiseaseOntologyTermsListing {
+  page: number;
+  pageCount: number;
+  pageSize: number;
+  resultCount: number;
+  terms: ExternalDisease[];
+  fromCache?: boolean;
+}
+
+/**
+ * Fetches disease terms listing from Disease Ontology.
+ * Uses official GET /terms endpoint with page and limit parameters.
+ */
+export async function getDiseaseOntologyTerms(
+  options: DiseaseOntologyTermsOptions = {}
+): Promise<DiseaseOntologyResult<DiseaseOntologyTermsListing>> {
+  const page = options.page || 1;
+  const limit = options.limit || DEFAULT_SEARCH_LIMIT;
+  const timeoutMs = options.timeoutMs || DEFAULT_TIMEOUT_MS;
+  const baseUrl = options.baseUrl || DISEASE_ONTOLOGY_API_BASE;
+
+  const cacheKey = createCacheKey('Disease Ontology', `terms:${page}:${limit}`);
+  if (!options.skipCache) {
+    const cached = diseaseCache.get<DiseaseOntologyTermsListing>(cacheKey);
+    if (cached) {
+      return { ok: true, data: cached, fromCache: true };
+    }
+  }
+
+  const url = `${baseUrl}/terms?page=${page}&limit=${limit}`;
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+      },
+    },
+    timeoutMs
+  );
+
+  if (!res.ok) {
+    const staleCached = diseaseCache.get<DiseaseOntologyTermsListing>(cacheKey);
+    if (staleCached) {
+      return { ok: true, data: staleCached, fromCache: true };
+    }
+    return res;
+  }
+
+  let json: unknown;
+  try {
+    json = await res.response.json();
+  } catch {
+    return {
+      ok: false,
+      error: 'PARSING_ERROR',
+      message: 'Failed to parse JSON response from Disease Ontology /terms endpoint.',
+      source: 'Disease Ontology',
+    };
+  }
+
+  const jsonObj = (json && typeof json === 'object') ? (json as Record<string, unknown>) : {};
+  const rawTerms: unknown[] = Array.isArray(json)
+    ? json
+    : Array.isArray(jsonObj.results)
+    ? (jsonObj.results as unknown[])
+    : Array.isArray(jsonObj.terms)
+    ? (jsonObj.terms as unknown[])
+    : [];
+
+  const pageVal = typeof jsonObj.page === 'number' ? jsonObj.page : page;
+  const pageCountVal = typeof jsonObj.page_count === 'number' ? jsonObj.page_count : 1;
+  const pageSizeVal = typeof jsonObj.page_size === 'number' ? jsonObj.page_size : limit;
+  const resultCountVal = typeof jsonObj.result_count === 'number' ? jsonObj.result_count : rawTerms.length;
+
+  const terms: ExternalDisease[] = [];
+  const seenIds = new Set<string>();
+
+  for (const rawTerm of rawTerms) {
+    const normalized = normalizeDiseaseOntologyTerm(rawTerm);
+    if (normalized && !seenIds.has(normalized.externalId)) {
+      seenIds.add(normalized.externalId);
+      terms.push(normalized);
+    }
+  }
+
+  const listing: DiseaseOntologyTermsListing = {
+    page: pageVal,
+    pageCount: pageCountVal,
+    pageSize: pageSizeVal,
+    resultCount: resultCountVal,
+    terms,
+    fromCache: false,
+  };
+
+  diseaseCache.set(cacheKey, listing, CACHE_TTL.DO_SEARCH, 'Disease Ontology');
+
+  return { ok: true, data: listing, fromCache: false };
+}
+
