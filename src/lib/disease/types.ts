@@ -60,14 +60,42 @@ export interface DiseaseSearchResult {
   fromCache?: boolean;
 }
 
+export interface MedlinePlusGroup {
+  id?: string;
+  url?: string;
+  name: string;
+}
+
+export interface MedlinePlusMeshDescriptor {
+  id?: string;
+  descriptor: string;
+}
+
 export interface MedlinePlusTopic {
+  id?: string;
   title: string;
   altTitles: string[];
+  seeReferences?: string[];
   fullSummary: string;
-  snippet: string;
+  snippet?: string;
   url: string;
+  language?: string;
   groupNames: string[];
+  groups?: MedlinePlusGroup[];
   meshHeadings: string[];
+  meshDescriptors?: MedlinePlusMeshDescriptor[];
+  rank?: number;
+  dateCreated?: string;
+  metaDesc?: string;
+}
+
+export interface MedlinePlusSearchResult {
+  query: string;
+  totalCount: number;
+  count: number;
+  results: MedlinePlusTopic[];
+  fromCache?: boolean;
+  spellingCorrection?: string;
 }
 
 export interface CacheEntry<T> {
