@@ -81,29 +81,45 @@ This roadmap defines the sequential development phases for the **Planora Disease
   - Next.js Turbopack production build succeeded across 28 routes (`○ /disease-lab`, `ƒ /api/disease/...`).
   - Browser subagent visual verification completed on desktop and mobile (`375x750`) viewports with zero console exceptions.
 
-### D. Learning Sprint Question Engine (Post-Disease Lab)
-*To be implemented strictly after Disease Lab is operating end-to-end.*
+### D. Learning Sprint Question Engine
 
-#### Learning Sprint Requirements & Architectural Constraints:
-1. **Diagnosis of Question Repetition**:
-   - Inspect why existing questions repeat (small hardcoded banks, deterministic selection indices, unpersisted history, or aggressive cache reuse).
-2. **On-Demand Expandable Question Generation**:
-   - Transition from fixed banks to dynamic, diverse on-demand questions.
-   - Expand dimensions: topic/subtopic, difficulty levels, learning objectives, multiple question formats (multiple choice, flashcard, scenario/application, comparison, debugging/troubleshooting, conceptual explanations).
-3. **Authoritative Grounding**:
-   - Source questions directly from verified retrieved materials (Disease Ontology, MedlinePlus, authoritative documentation).
-   - Ground factual answers strictly in reference sources; never present ungrounded model hallucinations as verified quiz answers.
-   - Retain source excerpts, attribution links, and rationales for answers.
-   - Distinctly separate generated open-ended study prompts from verified multiple-choice/factual questions.
-4. **Deduplication & Anti-Repeat Mechanism**:
-   - Compute question fingerprints and semantic embeddings/hashes to detect and reject both verbatim and near-paraphrase repeats.
-   - Maintain bounded per-user/per-topic history of recent question IDs and covered concepts.
-   - Cache public source materials separately from private user question history.
-5. **Data Safety, Privacy & Performance**:
-   - API keys remain strictly server-side.
-   - Zero transmission of personal notes, journals, or user IDs to external AI providers.
-   - Respect provider and source rate limits with configurable query budgets.
-   - Treat "unlimited" as expandable variety, not infinite uniqueness or unmetered third-party API usage.
-6. **Failure & Exhaustion Behavior**:
-   - If sources or generators fail or become exhausted, return a truthful status or clearly labeled fallback; never disguise repeated questions as newly generated.
-   - Ensure comprehensive automated tests covering variety, deduplication, grounding, provider failure fallbacks, and storage regression safety.
+#### 1. Phase LS1: Diagnosis, Source Grounding & Repeat Prevention Foundation (Completed)
+- **Repetition Root Cause Diagnosis**:
+  - Traced to `src/app/sprint/page.tsx:322–327` and `src/lib/learning-topics.ts`: Every curated topic in `CURATED_TOPICS` defined 2–3 static strings under `starterQuestions`. For custom topics, line 142/326 hardcoded `['What is the core idea?', 'Why does this matter?']`. There was zero dynamic generation, external retrieval, concept tracking, format variation, or repeat-prevention history.
+- **Normalized Data Architecture (`src/lib/learning/questions/types.ts`)**:
+  - Stable IDs, deterministic FNV-1a content fingerprints, topic/subtopic, concept, difficulty (`introductory`, `intermediate`, `advanced`), format (`explanation`, `scenario`, `comparison`, `troubleshooting`, `prediction`, `short_answer`, `mcq`), and learning objective (`conceptual_understanding`, `applied_reasoning`, `edge_cases`, `analytical_comparison`, `debugging`, `evaluation`).
+  - Source references with verified title, URL, retrieval timestamp, domain, and evidence snippets.
+  - Runtime validation separating objective answerable questions from open inquiry prompts without fake auto-grading.
+- **Safe Source Grounding (`src/lib/learning/questions/source-service.ts`)**:
+  - Pluggable provider architecture with strict anti-SSRF protections (blocking loopback, private IPv4/IPv6 subnets, and cloud metadata IPs).
+  - Source whitelisting for verified educational documentation (Wikipedia Educational API, MDN, Python docs, TypeScript docs, Node.js docs, NIH/MedlinePlus, Disease Ontology).
+  - Bounded response sizes (<=100KB), timeouts (4500ms), and isolated public LRU cache (max 60 entries, 30m TTL).
+- **Dynamic Reasoning Generator (`src/lib/learning/questions/question-generator.ts`)**:
+  - Multi-angle reasoning synthesis from retrieved passages covering explanations, real-world scenarios, trade-off comparisons, troubleshooting/debugging, and objective MCQs with unique distractors.
+  - Reference answers derived strictly from source evidence.
+  - Transparent support for external LLM provider schemas (Gemini / OpenAI compatible) with explicit provider status codes.
+- **Deterministic Deduplication (`src/lib/learning/questions/question-dedup.ts`)**:
+  - Normalization preserving critical negation words (`not`, `no`, `never`, `without`, `except`, `neither`, `nor`) and numeric distinctions (`0-9`).
+  - Combined token overlap and 2-word shingle Jaccard similarity catching close paraphrases while permitting materially different reasoning tasks on the same concept.
+- **Durable User History (`src/lib/learning/questions/question-history.ts`)**:
+  - User-scoped local persistence (`planora_question_history_${userId}`) surviving reloads and new sprint sessions.
+  - Idempotent recording of served questions preventing duplicates on double-clicks or rerenders.
+  - Bounded FIFO pruning per topic (max 100 entries).
+  - Strict isolation: public source cache never shares or stores user IDs or history.
+- **Server Route Boundary (`src/app/api/learning/questions/generate/route.ts`)**:
+  - Validated same-origin POST endpoint with bounded inputs, zero-store cache-control headers, and honest status codes:
+    `SUCCESS`, `PARTIAL_BATCH`, `NO_NEW_QUESTIONS`, `SOURCE_UNAVAILABLE`, `INSUFFICIENT_SOURCE_MATERIAL`, `PROVIDER_NOT_CONFIGURED`, `PROVIDER_UNAVAILABLE`.
+  - External Provider Configuration: When neither `GEMINI_API_KEY` nor `OPENAI_API_KEY` is present in server environment, the endpoint returns a structured `providerConfigNotice` guiding `.env.local` setup without failing or disguising static banks as dynamic.
+- **Verification Outcomes**:
+  - 113 / 113 passing tests (100% pass rate) across 23 test suites.
+  - 0 lint errors (0 new warnings; 3 pre-existing warnings in unrelated files).
+  - 0 TypeScript compilation errors (`npx tsc --noEmit`).
+  - Next.js Turbopack production build succeeded across 28 routes (`ƒ /api/learning/questions/generate`).
+
+#### 2. Phase LS2: Sprint UI Integration & End-to-End Verification (Upcoming)
+- Connect `src/app/sprint/page.tsx` sprint startup to `/api/learning/questions/generate`.
+- Wire dynamic question display, active question navigation, and grounded source references into the Learning Sprint UI.
+- Record accepted questions to durable history upon sprint start.
+- Preserve existing notes, custom topics, timer behavior, and completed sprint storage.
+- Visual and end-to-end verification of non-repeating question variety across sequential sprints.
+
