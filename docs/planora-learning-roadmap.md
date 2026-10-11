@@ -49,16 +49,37 @@ This roadmap defines the sequential development phases for the **Planora Disease
   - Opt-in live smoke verification: Live searches (`asthma`, `diabetes`), 2-page pagination (0 ID overlap), detail lookup (`DOID:2841`) with live MedlinePlus enrichment, and targeted category discovery all verified live.
   - Data safety: Zero production database migrations, Supabase resets, table alterations, or user data modifications performed.
 
-### C. Phase 3: Disease Lab UI & Study Flow
-- Disease Lab UI components:
-  - Category selector chips (Body Systems & Disease Types).
-  - "Surprise Me" random disease spinner with active filter visualization.
-  - Disease Detail view displaying authoritative DO definitions, classified categories, and provenance links.
-  - MedlinePlus enrichment section (summary, topics, source links) with clean fallback when ungrounded.
-- Study session flow & persistence integration:
-  - Integration with existing `public.disease_profiles` and `public.disease_study_sessions` tables.
-  - Study timer, session notes, confidence ratings, and review intervals.
-  - Client-side and server-side repeat prevention wired to the user's studied history.
+### C. Phase 3: Disease Lab UI & Study Flow (Completed)
+- **User Interface & Navigation**:
+  - Implemented `/disease-lab` route with dedicated desktop and mobile navigation entries (`Stethoscope` icon, active highlight).
+  - Responsive glassmorphic layout matching Planora design tokens (`bg-[var(--bg-paper)]/85`, `backdrop-blur-xl`, `border-[var(--border-color)]`, `shadow-glass`).
+  - Seamless view switching between "Discover" and "Saved Studies ({count})" with persistence status indicator.
+- **Safe Server Data Boundary**:
+  - Exposed validated, same-origin route handlers:
+    - `GET /api/disease/search`: Validates query lengths (<=250 chars) and pagination bounds; returns cached search results.
+    - `GET /api/disease/details`: Validates disease identifiers and returns authoritative DO details + optional MedlinePlus enrichment.
+    - `POST /api/disease/random`: Validates category filters against official definitions, bounds exclusion lists (<=500 IDs), and returns un-cached (`no-store`) random discovery results.
+  - Zero leakage of private notes, user profiles, or credentials across server boundaries.
+- **Discovery Controls & Spinner**:
+  - 16 Body System and 12 Disease Type multi-select glass chips with explicit filter semantics ("OR within group, AND between groups").
+  - Debounced autocomplete search input for direct DOID or keyword lookups.
+  - Interactive "Discover a Disease" with accessible progressive status updates ("Consulting Disease Ontology...", "Applying organ system & disease type filters...").
+  - Honest outcomes: Exhausted candidate pools or empty category filters display actionable resolution hints (reset filters, clear recent history).
+- **Disease Detail & Study Studio Workflow**:
+  - Authoritative Disease Card: DOID badge, official external records link, ontology definition, categorization pills, synonyms, and attributed MedlinePlus consumer summary. Clear medical study disclaimer.
+  - Interactive Study Studio: Configurable study timer (15m, 20m, 25m, surprise 15-20m) with accurate timestamp recovery across browser reloads, background tabs, and window minimization.
+  - 4 Topic-specific research tasks (Classification, Affected Systems, Clinical Presentation, Management & Research).
+  - Active recall prompts: Overview notes, 3 numbered key recall facts, and Feynman simple explanation.
+  - Review confidence rating (`needs_review`, `learning`, `comfortable`) updating profile metrics upon session completion.
+- **Saved Studies Library**:
+  - Searchable and filterable portfolio of saved diseases and review statuses.
+  - Offline-resilient: Saved profiles and study sessions remain fully accessible and editable during upstream API outages.
+- **Verification Outcomes**:
+  - 91 / 91 passing tests (100% pass rate) across 16 test suites.
+  - 0 lint errors (0 new warnings; 3 pre-existing warnings in unrelated files).
+  - Clean TypeScript compilation (`npx tsc --noEmit`).
+  - Next.js Turbopack production build succeeded across 28 routes (`○ /disease-lab`, `ƒ /api/disease/...`).
+  - Browser subagent visual verification completed on desktop and mobile (`375x750`) viewports with zero console exceptions.
 
 ### D. Learning Sprint Question Engine (Post-Disease Lab)
 *To be implemented strictly after Disease Lab is operating end-to-end.*

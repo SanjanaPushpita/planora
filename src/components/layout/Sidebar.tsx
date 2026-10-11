@@ -27,7 +27,8 @@ import {
   Flag,
   Inbox as InboxIcon,
   Brain,
-  BarChart3
+  BarChart3,
+  Stethoscope
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -54,7 +55,8 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
     focusSessions,
     researchPapers,
     goals,
-    weeklyReviews
+    weeklyReviews,
+    diseaseProfiles
   } = usePlanner();
 
   const unorganizedInboxCount = inboxItems?.filter(i => !i.is_organized && !i.is_trash && !i.is_archived).length || 0;
@@ -70,6 +72,7 @@ export function Sidebar({ isOpen, onClose, onOpenNewPageModal }: SidebarProps) {
   const mainNav = [
     { name: 'Dashboard', href: '/', icon: Home },
     { name: 'Inbox', href: '/inbox', icon: InboxIcon, count: unorganizedInboxCount },
+    { name: 'Disease Lab', href: '/disease-lab', icon: Stethoscope, count: diseaseProfiles?.length },
     { name: 'Vocabulary', href: '/vocabulary', icon: Brain, count: wordsDueCount || vocabularyItems?.filter(v => !v.is_trash).length },
     { name: 'Monthly Report', href: '/monthly-report', icon: BarChart3 },
     { name: 'Weekly Review', href: '/weekly-review', icon: Compass },
