@@ -84,6 +84,30 @@ export type QuestionEngineStatusCode =
   | 'INSUFFICIENT_SOURCE_MATERIAL'
   | 'INVALID_GENERATED_OUTPUT';
 
+export interface HistoryComparisonSignal {
+  fingerprint: string;
+  concept?: string;
+  format?: QuestionFormat;
+  objective?: LearningObjective;
+  promptSnippet?: string;
+}
+
+export type GeminiErrorReason =
+  | 'MISSING_API_KEY'
+  | 'INVALID_MODEL'
+  | 'MODEL_NOT_FOUND'
+  | 'RATE_LIMITED'
+  | 'TIMEOUT'
+  | 'INVALID_RESPONSE_SCHEMA'
+  | 'NETWORK_ERROR';
+
+export interface GeminiGenerationResult {
+  success: boolean;
+  questions?: NormalizedQuestion[];
+  errorReason?: GeminiErrorReason;
+  errorMessage?: string;
+}
+
 export interface GenerateQuestionsRequest {
   topic: string;
   subtopics?: string[];
@@ -94,6 +118,7 @@ export interface GenerateQuestionsRequest {
   objectives?: LearningObjective[];
   userId?: string;
   excludeFingerprints?: string[];
+  historySignals?: HistoryComparisonSignal[];
   maxRefillAttempts?: number;
 }
 
@@ -107,6 +132,8 @@ export interface GenerateQuestionsResponse {
   requestedCount: number;
   servedCount: number;
   refillCount: number;
+  generationMode?: 'model' | 'source';
+  modelFallbackReason?: string;
   dedupStats: {
     exactFiltered: number;
     similarityFiltered: number;

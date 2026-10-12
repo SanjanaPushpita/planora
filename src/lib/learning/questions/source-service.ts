@@ -169,7 +169,7 @@ export class WikipediaEducationalProvider implements SourceProvider {
 
       return {
         topic,
-        title: data.title || topic,
+        title: data.title ? `Wikipedia: ${data.title}` : `Wikipedia: ${topic}`,
         url: data.content_urls?.desktop?.page || `https://en.wikipedia.org/wiki/${query}`,
         retrievedAt: new Date().toISOString(),
         sourceDomain: 'en.wikipedia.org',

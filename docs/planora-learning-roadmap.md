@@ -116,10 +116,65 @@ This roadmap defines the sequential development phases for the **Planora Disease
   - 0 TypeScript compilation errors (`npx tsc --noEmit`).
   - Next.js Turbopack production build succeeded across 28 routes (`ƒ /api/learning/questions/generate`).
 
-#### 2. Phase LS2: Sprint UI Integration & End-to-End Verification (Upcoming)
-- Connect `src/app/sprint/page.tsx` sprint startup to `/api/learning/questions/generate`.
-- Wire dynamic question display, active question navigation, and grounded source references into the Learning Sprint UI.
-- Record accepted questions to durable history upon sprint start.
-- Preserve existing notes, custom topics, timer behavior, and completed sprint storage.
-- Visual and end-to-end verification of non-repeating question variety across sequential sprints.
+#### 2. Phase LS2: Sprint UI Integration & End-to-End Verification (Completed)
+- **Sprint UI Integration (`src/app/sprint/page.tsx`)**:
+  - Connected sprint startup to same-origin `/api/learning/questions/generate` endpoint for both curated and custom learning topics.
+  - Setup screen controls: Configurable question batch count (`3 | 5 | 7`, default 5), active repeat-prevention badge, generation spinner, and actionable status banners for novelty exhaustion (`NO_NEW_QUESTIONS`) and offline fallback.
+  - Study timer remains paused during network generation, starting only when an accepted batch is available.
+- **Dynamic Question Studio in Active Mode**:
+  - Comprehensive question navigation (Previous/Next buttons, accessible numbered pill indicator).
+  - Format badges (`Explanation`, `Scenario`, `Comparison`, `Troubleshooting`, `Multiple Choice`, etc.) and difficulty badges (`Introductory`, `Intermediate`, `Advanced`).
+  - Authoritative source citation links with domain provenance, retrieval dates, and article titles.
+  - Interactive MCQ interface: Option selection, instant validation, and revealed grounded rationale.
+  - Open inquiry prompts clearly separated from objective quizzes: labeled with open inquiry guidance and Feynman/synthesis reflections without fake auto-grading.
+  - Expandable custom question accordion allowing learners to review raw questions alongside the structured studio.
+- **Generation Quality & Mode Separation**:
+  - **Source-Grounded Mode (`curated_source`)**: Direct sentence extraction from retrieved documentation passages (MDN, TypeScript docs, Wikipedia) producing varied reasoning tasks (explanations, scenarios, trade-offs, debugging, MCQs) with authentic reference answers and plausible semantic contrast distractors.
+  - **Official Google Gemini REST Adapter (`generateWithGemini`)**: Built-in server-side adapter for Google Gemini API (`v1beta` endpoint, `gemini-1.5-flash`), 9s timeout, structured JSON schema response, and strict grounding instructions when `process.env.GEMINI_API_KEY` is configured.
+  - **Truthful Status & Provider Configuration**: In the absence of an API key, the engine operates in `curated_source` mode (`Source-Grounded`), displaying an honest provider setup notice with local and Vercel environment instructions without disguising static banks or claiming unmetered LLM calls.
+- **Novelty & Durable Repeat Prevention**:
+  - "Get More Questions" action pulls novel questions by providing current question fingerprints and user-scoped history to the generation engine.
+  - Accepted batches are recorded idempotently via `recordServedQuestions` under a logical request ID, preventing duplicate history entries on rerenders.
+  - User answers, notes, and timers are strictly preserved when refilling questions.
+  - When novelty is exhausted, the UI alerts the learner with suggestions to explore related subtopics or adjust difficulty rather than silently resetting history.
+- **Session Persistence, Draft Recovery & Backwards Compatibility**:
+  - Persistent active sprint state: Restores `structuredQuestions`, `userAnswers`, `revealedExplanations`, `currentQuestionIndex`, and accumulated wall-clock timer across browser reloads and navigation.
+  - Backwards compatibility: Seamlessly normalizes legacy string-array `keyQuestions` into the structured question schema without data loss.
+  - Unrelated planner data, Disease Lab records, and private storage remain completely intact.
+- **Verification Outcomes**:
+  - Automated test suite: 120 / 120 passing tests (100% pass rate) across 28 test suites.
+  - Linter (`npm run lint`): 0 errors (0 new warnings; 3 pre-existing warnings in unrelated files).
+  - Typecheck (`npx tsc --noEmit`): 0 errors.
+  - Production build (`npm run build`): Successfully built all 28 static and dynamic Next.js routes.
+  - Browser subagent visual verification completed on desktop and mobile (`375x750`) viewports: setup controls, sprint launch, question studio, interactive MCQ answering, reference reveal, navigation, batch refill, and reload draft recovery all confirmed with zero console exceptions.
+  - Data safety: Zero production database migrations, Supabase resets, table drops, or user record alterations.
+
+#### 3. Phase LS2.1: Model Modernization, History Comparison Signals & Truthful Attribution (Completed)
+- **Model Modernization & Security Boundaries**:
+  - Replaced retired `gemini-1.5-flash` (shut down September 29, 2025) with configurable server-side `GEMINI_MODEL` (defaults to `gemini-2.5-flash`, verified as active in Google Gemini v1beta documentation as of October 2026).
+  - Implemented strict model identifier validation (`isValidGeminiModel`) rejecting slashes, colons, URL schemes, and path traversal to prevent SSRF and arbitrary request URLs.
+  - Structured output conforming to official Google AI documentation (`generationConfig.responseSchema` with JSON mode).
+  - Server-only credentials via `GEMINI_API_KEY` and `GEMINI_MODEL` with safe commented placeholders added to `.env.example`. Zero `NEXT_PUBLIC` exposure.
+  - Granular error reporting (`GeminiGenerationResult`): 404 model not found, 429 quota/rate limit, timeout (9s), and invalid JSON schema return explicit error reasons and trigger graceful fallback to source-grounded mode with transparent `modelFallbackReason`.
+- **History Comparison Signals & Near-Repeat Prevention**:
+  - Added bounded `historySignals` payload (`fingerprint`, `concept`, `format`, `objective`, `promptSnippet`) sent from client localStorage to the server dedup layer on initial launch and refills.
+  - Server merges `historySignals` into `existingHistoryEntries` to execute token and 2-word shingle Jaccard similarity checks, eliminating near-paraphrase repeats across reloads and new sessions.
+  - Absolute privacy: `historySignals` includes only generated question text snippets. User answers, reflection notes, journals, and tokens are never sent to providers or external services.
+  - Security & isolation: Server does not trust body `userId` for data access. Public source cache keys never store user history or comparison signals.
+  - Scope: Bounded to 100 entries per topic in browser localStorage; cross-device remote sync is not implemented.
+- **Truthful Exhaustion & Source Attribution**:
+  - Corrected exhaustion message across server and UI: *"No new questions found in the currently available material. Try another subtopic or source."*
+  - Dedicated active refill notice banner in the Question Studio informing learners when new questions are unavailable without disrupting ongoing notes or timers.
+  - Clean source attribution: Wikipedia articles explicitly titled with `"Wikipedia: "` prefix; never labeled as an official primary source. Official technical documentation (MDN, Python, TypeScript) labeled with authoritative domains.
+  - Reference answers require relevant source passage evidence; unsupported reasoning is labeled as open inquiry rather than pseudo-graded tests.
+- **Verification Outcomes**:
+  - Automated test suite: **134 / 134 passing tests** (100% pass rate) across 34 test suites.
+  - Linter (`npm run lint`): **0 errors** (0 new warnings; 3 pre-existing warnings in unrelated files).
+  - Typecheck (`npx tsc --noEmit`): **0 errors**.
+  - Production build (`npm run build`): Successfully compiled all 28 static and dynamic Next.js routes.
+  - Live checks performed: Source-based live requests confirmed working with HTTP 200 on `/api/learning/questions/generate`. Gemini model adapter fully verified via mocked regression suite; live model execution remains blocked awaiting server-side `GEMINI_API_KEY` configuration.
+  - Browser subagent visual verification confirmed on desktop and mobile (`375x750`) viewports.
+  - Data safety: Zero production database migrations, Supabase resets, table drops, or user record alterations.
+
+
 

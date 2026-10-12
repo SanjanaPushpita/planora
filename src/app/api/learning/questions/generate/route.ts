@@ -4,7 +4,8 @@ import {
   GenerateQuestionsRequest,
   QuestionDifficulty,
   QuestionFormat,
-  LearningObjective
+  LearningObjective,
+  HistoryComparisonSignal
 } from '@/lib/learning/questions/types';
 
 export const dynamic = 'force-dynamic';
@@ -116,6 +117,22 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // 7. Recent history comparison signals (max 50 items)
+    const validHistorySignals: HistoryComparisonSignal[] = [];
+    if (Array.isArray(body.historySignals)) {
+      for (const sig of body.historySignals.slice(0, 50)) {
+        if (sig && typeof sig.fingerprint === 'string' && sig.fingerprint.trim().length > 0 && sig.fingerprint.trim().length <= 32) {
+          validHistorySignals.push({
+            fingerprint: sig.fingerprint.trim(),
+            concept: typeof sig.concept === 'string' ? sig.concept.trim().slice(0, 100) : undefined,
+            format: VALID_FORMATS.includes(sig.format) ? sig.format : undefined,
+            objective: VALID_OBJECTIVES.includes(sig.objective) ? sig.objective : undefined,
+            promptSnippet: typeof sig.promptSnippet === 'string' ? sig.promptSnippet.trim().slice(0, 200) : undefined
+          });
+        }
+      }
+    }
+
     const requestPayload: GenerateQuestionsRequest = {
       topic: rawTopic,
       subtopics: validSubtopics.length > 0 ? validSubtopics : undefined,
@@ -123,6 +140,8 @@ export async function POST(req: NextRequest) {
       desiredCount,
       language: typeof body.language === 'string' ? body.language.slice(0, 30) : 'English',
       excludeFingerprints: validExcludedFingerprints,
+      historySignals: validHistorySignals.length > 0 ? validHistorySignals : undefined,
+      userId: typeof body.userId === 'string' && body.userId.trim() ? body.userId.trim().slice(0, 64) : undefined,
       formats: validFormats.length > 0 ? validFormats : undefined,
       objectives: validObjectives.length > 0 ? validObjectives : undefined,
       maxRefillAttempts: 1

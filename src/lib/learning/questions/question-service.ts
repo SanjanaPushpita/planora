@@ -11,7 +11,7 @@ import {
   QuestionHistoryEntry
 } from './types';
 import { sourceRetrievalService } from './source-service';
-import { generateFromRetrievedPassages, validateNormalizedQuestion } from './question-generator';
+import { generateFromRetrievedPassages, generateWithGemini, validateNormalizedQuestion } from './question-generator';
 import { checkDuplicateAgainstCollection, computeContentFingerprint, normalizeQuestionText } from './question-dedup';
 import { loadUserQuestionHistory } from './question-history';
 
@@ -62,26 +62,59 @@ export class QuestionService {
       sourceDomain: material.sourceDomain
     };
 
-    // 2. Load user history to deduplicate against
-    const userHistory = loadUserQuestionHistory(request.userId, topic);
+    // 2. Build deduplication entries from request.historySignals and request.excludeFingerprints
     const excludedFingerprints = new Set(request.excludeFingerprints || []);
-    for (const h of userHistory) {
-      excludedFingerprints.add(h.fingerprint);
+    const existingHistoryEntries: Array<{
+      fingerprint: string;
+      concept: string;
+      format: string;
+      objective: string;
+      normalizedPromptSnippet: string;
+    }> = [];
+
+    if (Array.isArray(request.historySignals)) {
+      for (const sig of request.historySignals) {
+        if (sig && typeof sig.fingerprint === 'string' && sig.fingerprint.trim()) {
+          const fp = sig.fingerprint.trim();
+          excludedFingerprints.add(fp);
+          existingHistoryEntries.push({
+            fingerprint: fp,
+            concept: sig.concept || topic,
+            format: sig.format || 'explanation',
+            objective: sig.objective || 'conceptual_understanding',
+            normalizedPromptSnippet: normalizeQuestionText(sig.promptSnippet || sig.concept || '').slice(0, 160)
+          });
+        }
+      }
     }
 
-    const existingHistoryEntries = userHistory.map(h => ({
-      fingerprint: h.fingerprint,
-      concept: h.concept,
-      format: h.format,
-      objective: h.objective,
-      normalizedPromptSnippet: h.normalizedPromptSnippet
-    }));
+    // 3. Generate primary candidate batch (Model mode if GEMINI_API_KEY is configured, else Source mode)
+    let candidateBatch: NormalizedQuestion[] | null = null;
+    let generationMode: 'model' | 'source' = 'source';
+    let modelFallbackReason: string | undefined = undefined;
 
-    // 3. Generate primary candidate batch
-    const candidateBatch = generateFromRetrievedPassages(material, {
-      ...request,
-      desiredCount
-    });
+    if (process.env.GEMINI_API_KEY) {
+      const geminiResult = await generateWithGemini(process.env.GEMINI_API_KEY, material, {
+        ...request,
+        desiredCount
+      });
+      if (geminiResult.success && geminiResult.questions && geminiResult.questions.length > 0) {
+        candidateBatch = geminiResult.questions;
+        generationMode = 'model';
+      } else {
+        modelFallbackReason = `Model mode did not run (${geminiResult.errorReason || 'UNKNOWN'}): ${geminiResult.errorMessage || 'Unknown error'}. Operating in source-grounded mode.`;
+      }
+    } else {
+      modelFallbackReason = 'GEMINI_API_KEY is not configured in server environment. Operating in source-grounded mode.';
+    }
+
+    if (!candidateBatch || candidateBatch.length === 0) {
+      candidateBatch = generateFromRetrievedPassages(material, {
+        ...request,
+        desiredCount
+      });
+      generationMode = 'source';
+    }
 
     const acceptedQuestions: NormalizedQuestion[] = [];
     const currentBatchEntries: Array<{
@@ -183,7 +216,7 @@ export class QuestionService {
 
     if (acceptedQuestions.length === 0) {
       statusCode = 'NO_NEW_QUESTIONS';
-      message = `All candidate questions were duplicates of recent history for topic "${topic}". Try exploring other subtopics or difficulty levels.`;
+      message = 'No new questions found in the currently available material. Try another subtopic or source.';
     } else if (acceptedQuestions.length < desiredCount) {
       statusCode = 'PARTIAL_BATCH';
       message = `Generated ${acceptedQuestions.length} of ${desiredCount} requested questions due to novelty constraints.`;
@@ -207,6 +240,8 @@ export class QuestionService {
       requestedCount: desiredCount,
       servedCount: acceptedQuestions.length,
       refillCount: refillAttempts,
+      generationMode,
+      modelFallbackReason,
       dedupStats: {
         exactFiltered: exactFilteredCount,
         similarityFiltered: similarityFilteredCount,

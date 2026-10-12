@@ -49,16 +49,33 @@ import {
   ArrowRight,
   TrendingUp,
   AlertCircle,
-  Loader2
+  Loader2,
+  ChevronLeft,
+  ShieldCheck
 } from 'lucide-react';
+import { 
+  NormalizedQuestion, 
+  QuestionDifficulty, 
+  QuestionFormat, 
+  GenerateQuestionsResponse 
+} from '@/lib/learning/questions/types';
+import { computeContentFingerprint } from '@/lib/learning/questions/question-dedup';
+import { loadUserQuestionHistory, recordServedQuestions } from '@/lib/learning/questions/question-history';
 
 const SPRINT_STORAGE_KEY = 'planora_active_learning_sprint';
 const SEEN_TOPICS_KEY = 'planora_learning_seen_topics';
+
+function mapToQuestionDifficulty(d: LearningDifficulty): QuestionDifficulty {
+  if (d === 'easy') return 'introductory';
+  if (d === 'advanced') return 'advanced';
+  return 'intermediate';
+}
 
 function LearningSprintContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { 
+    profile,
     learningSprints, 
     saveLearningSprint, 
     deleteLearningSprint, 
@@ -104,6 +121,19 @@ function LearningSprintContent() {
   const [explanation, setExplanation] = useState<string>('');
   const [explainItBack, setExplainItBack] = useState<string>('');
   const [isFocusRecallMode, setIsFocusRecallMode] = useState<boolean>(false);
+
+  // Dynamic Question Engine state
+  const [structuredQuestions, setStructuredQuestions] = useState<NormalizedQuestion[]>([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState<number>(0);
+  const [userAnswers, setUserAnswers] = useState<Record<string, string | number>>({});
+  const [revealedExplanations, setRevealedExplanations] = useState<Record<string, boolean>>({});
+  const [sprintGenerationMode, setSprintGenerationMode] = useState<'model' | 'source' | 'legacy'>('source');
+  const [questionCountSetting, setQuestionCountSetting] = useState<number>(5);
+  const [isGeneratingQuestions, setIsGeneratingQuestions] = useState<boolean>(false);
+  const [isFetchingMoreQuestions, setIsFetchingMoreQuestions] = useState<boolean>(false);
+  const [generationNotice, setGenerationNotice] = useState<{ status: 'exhausted' | 'error' | 'partial'; message: string } | null>(null);
+  const [activeRefillNotice, setActiveRefillNotice] = useState<string | null>(null);
+  const activeAbortControllerRef = useRef<AbortController | null>(null);
 
   // Modals & temporary inputs
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false);
@@ -189,6 +219,40 @@ function LearningSprintContent() {
             setElapsedSeconds(parsed.accumulatedSeconds || 0);
           }
 
+          if (Array.isArray(parsed.structuredQuestions) && parsed.structuredQuestions.length > 0) {
+            setStructuredQuestions(parsed.structuredQuestions);
+          } else if (Array.isArray(parsed.keyQuestions) && parsed.keyQuestions.length > 0) {
+            const legacyQuestions: NormalizedQuestion[] = parsed.keyQuestions.map((q: string, i: number) => ({
+              id: `restored_legacy_${i}`,
+              fingerprint: computeContentFingerprint(q),
+              topic: parsed.topic || 'General',
+              concept: parsed.topic || 'General',
+              difficulty: 'intermediate',
+              language: 'English',
+              format: 'explanation',
+              objective: 'conceptual_understanding',
+              prompt: q,
+              sourceReferences: [],
+              origin: 'fallback_material',
+              groundingStatus: 'open_inquiry',
+              isObjective: false
+            }));
+            setStructuredQuestions(legacyQuestions);
+          }
+
+          if (typeof parsed.currentQuestionIndex === 'number') {
+            setCurrentQuestionIndex(parsed.currentQuestionIndex);
+          }
+          if (parsed.userAnswers && typeof parsed.userAnswers === 'object') {
+            setUserAnswers(parsed.userAnswers);
+          }
+          if (parsed.revealedExplanations && typeof parsed.revealedExplanations === 'object') {
+            setRevealedExplanations(parsed.revealedExplanations);
+          }
+          if (parsed.generationMode) {
+            setSprintGenerationMode(parsed.generationMode);
+          }
+
           setMode('active');
         }
       }
@@ -247,6 +311,11 @@ function LearningSprintContent() {
         isTimerPaused,
         accumulatedSeconds: elapsedSeconds,
         timerStartedAt: Date.now(),
+        structuredQuestions,
+        currentQuestionIndex,
+        userAnswers,
+        revealedExplanations,
+        generationMode: sprintGenerationMode,
         ...overrides,
       };
       localStorage.setItem(SPRINT_STORAGE_KEY, JSON.stringify(state));
@@ -276,7 +345,12 @@ function LearningSprintContent() {
     newWords, 
     confusions, 
     explanation, 
-    explainItBack
+    explainItBack,
+    structuredQuestions,
+    currentQuestionIndex,
+    userAnswers,
+    revealedExplanations,
+    sprintGenerationMode
   ]);
 
   // 5. Pick next random topic with no-repeat tracking
@@ -301,58 +375,330 @@ function LearningSprintContent() {
     }
   };
 
-  // 6. Start Learning Sprint
-  const handleStartSprint = (customTopicObj?: CuratedTopic) => {
+  // 6. Start Learning Sprint with Dynamic Grounded Questions & Anti-Repeat Foundation
+  const handleStartSprint = async (
+    customTopicObj?: CuratedTopic, 
+    options?: { allowRepeats?: boolean; offlineOnly?: boolean }
+  ) => {
+    if (isGeneratingQuestions) return;
+
     const topicObj = customTopicObj || currentTopic;
     const newId = generateId();
     const nowIso = new Date().toISOString();
     const durationSec = sprintDurationMinutes * 60;
 
-    setSprintId(newId);
-    setSprintTopic(topicObj.topic);
-    setSprintCategory(topicObj.category);
-    setSprintDifficulty(topicObj.difficulty || 'medium');
-    setTargetDurationSeconds(durationSec);
-    setElapsedSeconds(0);
-    setStartedAtIso(nowIso);
-    setIsTimerRunning(true);
-    setIsTimerPaused(false);
-    setHasShownTimeUpPrompt(false);
+    // Reset any previous notices
+    setGenerationNotice(null);
 
-    // Populate starter questions if available
-    if (topicObj.starterQuestions && topicObj.starterQuestions.length > 0) {
-      setKeyQuestions([...topicObj.starterQuestions]);
-    } else {
-      setKeyQuestions(['What is the core idea?', 'Why does this matter?']);
+    // Explicit offline fallback requested or fallback path
+    if (options?.offlineOnly) {
+      setSprintId(newId);
+      setSprintTopic(topicObj.topic);
+      setSprintCategory(topicObj.category);
+      setSprintDifficulty(topicObj.difficulty || 'medium');
+      setTargetDurationSeconds(durationSec);
+      setElapsedSeconds(0);
+      setStartedAtIso(nowIso);
+      setIsTimerRunning(true);
+      setIsTimerPaused(false);
+      setHasShownTimeUpPrompt(false);
+      setSprintGenerationMode('legacy');
+
+      const starter = topicObj.starterQuestions && topicObj.starterQuestions.length > 0
+        ? [...topicObj.starterQuestions]
+        : ['What are the fundamental principles of this topic?', 'How does it work in practice?'];
+
+      setKeyQuestions(starter);
+      const offlineStructured: NormalizedQuestion[] = starter.map((q, i) => ({
+        id: `offline_${Date.now()}_${i}`,
+        fingerprint: computeContentFingerprint(q),
+        topic: topicObj.topic,
+        concept: topicObj.topic,
+        difficulty: mapToQuestionDifficulty(selectedDifficulty),
+        language: 'English',
+        format: 'explanation',
+        objective: 'conceptual_understanding',
+        prompt: q,
+        sourceReferences: [],
+        origin: 'fallback_material',
+        groundingStatus: 'open_inquiry',
+        isObjective: false,
+      }));
+
+      setStructuredQuestions(offlineStructured);
+      setCurrentQuestionIndex(0);
+      setUserAnswers({});
+      setRevealedExplanations({});
+
+      setNotes('');
+      setSources([]);
+      setKeyPoint1('');
+      setKeyPoint2('');
+      setKeyPoint3('');
+      setNewWords([]);
+      setConfusions('');
+      setExplanation('');
+      setExplainItBack('');
+      setIsFocusRecallMode(false);
+      setMode('active');
+
+      syncActiveSprintDraft({
+        sprintId: newId,
+        topic: topicObj.topic,
+        category: topicObj.category,
+        difficulty: topicObj.difficulty || 'medium',
+        status: 'in_progress',
+        targetDurationSeconds: durationSec,
+        startedAt: nowIso,
+        structuredQuestions: offlineStructured,
+        keyQuestions: starter,
+        sources: [],
+        generationMode: 'legacy',
+        currentQuestionIndex: 0,
+        userAnswers: {},
+        revealedExplanations: {},
+        isTimerRunning: true,
+        isTimerPaused: false,
+        accumulatedSeconds: 0,
+        timerStartedAt: Date.now(),
+      });
+      return;
     }
 
-    setNotes('');
-    setSources([]);
-    setKeyPoint1('');
-    setKeyPoint2('');
-    setKeyPoint3('');
-    setNewWords([]);
-    setConfusions('');
-    setExplanation('');
-    setExplainItBack('');
-    setIsFocusRecallMode(false);
+    // Dynamic Engine Path
+    setIsGeneratingQuestions(true);
 
-    setMode('active');
+    if (activeAbortControllerRef.current) {
+      activeAbortControllerRef.current.abort();
+    }
+    const abortCtrl = new AbortController();
+    activeAbortControllerRef.current = abortCtrl;
 
-    // Save active state to storage
-    syncActiveSprintDraft({
-      sprintId: newId,
-      topic: topicObj.topic,
-      category: topicObj.category,
-      difficulty: topicObj.difficulty || 'medium',
-      status: 'in_progress',
-      targetDurationSeconds: durationSec,
-      startedAt: nowIso,
-      isTimerRunning: true,
-      isTimerPaused: false,
-      accumulatedSeconds: 0,
-      timerStartedAt: Date.now(),
-    });
+    try {
+      let excludedFps: string[] = [];
+      let historySignals: Array<{
+        fingerprint: string;
+        concept?: string;
+        format?: QuestionFormat;
+        objective?: any;
+        promptSnippet?: string;
+      }> = [];
+
+      if (!options?.allowRepeats) {
+        const history = loadUserQuestionHistory(profile?.id, topicObj.topic);
+        excludedFps = history.map(h => h.fingerprint);
+        historySignals = history.slice(-30).map(h => ({
+          fingerprint: h.fingerprint,
+          concept: h.concept,
+          format: h.format,
+          objective: h.objective,
+          promptSnippet: h.normalizedPromptSnippet || h.concept
+        }));
+      }
+
+      const res = await fetch('/api/learning/questions/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: abortCtrl.signal,
+        body: JSON.stringify({
+          topic: topicObj.topic,
+          difficulty: mapToQuestionDifficulty(selectedDifficulty),
+          desiredCount: questionCountSetting,
+          excludeFingerprints: excludedFps,
+          historySignals: historySignals.length > 0 ? historySignals : undefined,
+          userId: profile?.id
+        })
+      });
+
+      if (!res.ok) {
+        throw new Error(`Generation endpoint returned HTTP ${res.status}`);
+      }
+
+      const data: GenerateQuestionsResponse = await res.json();
+
+      if (data.statusCode === 'NO_NEW_QUESTIONS') {
+        setIsGeneratingQuestions(false);
+        setGenerationNotice({
+          status: 'exhausted',
+          message: data.message || 'No new questions found in the currently available material. Try another subtopic or source.'
+        });
+        return;
+      }
+
+      if (data.statusCode === 'SOURCE_UNAVAILABLE' && (!data.questions || data.questions.length === 0)) {
+        setIsGeneratingQuestions(false);
+        setGenerationNotice({
+          status: 'error',
+          message: data.message || `Educational source material could not be retrieved for "${topicObj.topic}".`
+        });
+        return;
+      }
+
+      const questionsToUse = data.questions && data.questions.length > 0 ? data.questions : [];
+
+      if (questionsToUse.length === 0) {
+        // Fallback to offline starter questions
+        handleStartSprint(topicObj, { offlineOnly: true });
+        return;
+      }
+
+      // Record served questions idempotently into durable user history
+      recordServedQuestions(profile?.id, questionsToUse);
+
+      const generatedKeyQuestions = questionsToUse.map(q => q.prompt);
+      const generatedSources: LearningSource[] = (data.retrievedSources || []).map(s => ({
+        id: generateId(),
+        sprint_id: newId,
+        title: s.title,
+        url: s.url,
+        note: `Retrieved for ${topicObj.topic} grounding`,
+      }));
+
+      setSprintId(newId);
+      setSprintTopic(topicObj.topic);
+      setSprintCategory(topicObj.category);
+      setSprintDifficulty(topicObj.difficulty || 'medium');
+      setTargetDurationSeconds(durationSec);
+      setElapsedSeconds(0);
+      setStartedAtIso(nowIso);
+      setIsTimerRunning(true);
+      setIsTimerPaused(false);
+      setHasShownTimeUpPrompt(false);
+      setSprintGenerationMode(data.generationMode || 'source');
+
+      setStructuredQuestions(questionsToUse);
+      setCurrentQuestionIndex(0);
+      setUserAnswers({});
+      setRevealedExplanations({});
+
+      setKeyQuestions(generatedKeyQuestions);
+      setNotes('');
+      setSources(generatedSources);
+      setKeyPoint1('');
+      setKeyPoint2('');
+      setKeyPoint3('');
+      setNewWords([]);
+      setConfusions('');
+      setExplanation('');
+      setExplainItBack('');
+      setIsFocusRecallMode(false);
+
+      if (data.statusCode === 'PARTIAL_BATCH') {
+        setGenerationNotice({
+          status: 'partial',
+          message: data.message
+        });
+      }
+
+      setMode('active');
+
+      syncActiveSprintDraft({
+        sprintId: newId,
+        topic: topicObj.topic,
+        category: topicObj.category,
+        difficulty: topicObj.difficulty || 'medium',
+        status: 'in_progress',
+        targetDurationSeconds: durationSec,
+        startedAt: nowIso,
+        structuredQuestions: questionsToUse,
+        keyQuestions: generatedKeyQuestions,
+        sources: generatedSources,
+        generationMode: data.generationMode || 'source',
+        currentQuestionIndex: 0,
+        userAnswers: {},
+        revealedExplanations: {},
+        isTimerRunning: true,
+        isTimerPaused: false,
+        accumulatedSeconds: 0,
+        timerStartedAt: Date.now(),
+      });
+    } catch (err: unknown) {
+      if ((err as Error)?.name === 'AbortError') return;
+      setIsGeneratingQuestions(false);
+      setGenerationNotice({
+        status: 'error',
+        message: 'Could not connect to the question engine. You can start with offline prompts or retry.'
+      });
+    } finally {
+      setIsGeneratingQuestions(false);
+    }
+  };
+
+  // 7. Request Additional Novel Questions in Active Sprint
+  const handleGetMoreQuestions = async () => {
+    if (isFetchingMoreQuestions) return;
+    setIsFetchingMoreQuestions(true);
+    setActiveRefillNotice(null);
+
+    try {
+      const currentFps = structuredQuestions.map(q => q.fingerprint);
+      const history = loadUserQuestionHistory(profile?.id, sprintTopic);
+      const allExcluded = Array.from(new Set([...currentFps, ...history.map(h => h.fingerprint)]));
+
+      // Pass active session questions and recent history as comparison signals for near-duplicate protection
+      const activeSignals = structuredQuestions.map(q => ({
+        fingerprint: q.fingerprint,
+        concept: q.concept,
+        format: q.format,
+        objective: q.objective,
+        promptSnippet: q.prompt.slice(0, 160)
+      }));
+      const historySignals = [
+        ...history.slice(-20).map(h => ({
+          fingerprint: h.fingerprint,
+          concept: h.concept,
+          format: h.format,
+          objective: h.objective,
+          promptSnippet: h.normalizedPromptSnippet || h.concept
+        })),
+        ...activeSignals
+      ];
+
+      const res = await fetch('/api/learning/questions/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: sprintTopic,
+          difficulty: mapToQuestionDifficulty(sprintDifficulty),
+          desiredCount: 3,
+          excludeFingerprints: allExcluded,
+          historySignals,
+          userId: profile?.id
+        })
+      });
+
+      if (!res.ok) throw new Error('Refill request failed');
+      const data: GenerateQuestionsResponse = await res.json();
+
+      if (data.statusCode === 'NO_NEW_QUESTIONS' || !data.questions || data.questions.length === 0) {
+        setActiveRefillNotice(data.message || 'No new questions found in the currently available material. Try another subtopic or source.');
+        return;
+      }
+
+      recordServedQuestions(profile?.id, data.questions);
+      const nextBatch = [...structuredQuestions, ...data.questions];
+      setStructuredQuestions(nextBatch);
+      setKeyQuestions(nextBatch.map(q => q.prompt));
+
+      if (data.retrievedSources && data.retrievedSources.length > 0) {
+        const newSources: LearningSource[] = data.retrievedSources
+          .filter(s => !sources.some(existing => existing.url === s.url))
+            .map(s => ({
+              id: generateId(),
+              sprint_id: sprintId,
+              title: s.title,
+              url: s.url,
+              note: `Grounded for ${sprintTopic}`
+            }));
+        if (newSources.length > 0) {
+          setSources(prev => [...prev, ...newSources]);
+        }
+      }
+    } catch (e) {
+      console.error('Error fetching additional questions:', e);
+    } finally {
+      setIsFetchingMoreQuestions(false);
+    }
   };
 
   // Timer controls
@@ -705,56 +1051,152 @@ function LearningSprintContent() {
             </div>
           )}
 
-          {/* Sprint Length Selector */}
-          <div className="pt-2 border-t border-[var(--border-color)] flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-[var(--accent)]" />
-              <span className="text-xs font-semibold text-[var(--text-secondary)]">
-                Sprint Length:
-              </span>
-              <div className="flex items-center gap-1">
-                {[10, 15, 20, 30].map(m => (
+          {/* Sprint Settings: Length & Question Count */}
+          <div className="pt-2 border-t border-[var(--border-color)] space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-[var(--accent)]" />
+                <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                  Sprint Length:
+                </span>
+                <div className="flex items-center gap-1">
+                  {[10, 15, 20, 30].map(m => (
+                    <button
+                      key={m}
+                      onClick={() => setSprintDurationMinutes(m)}
+                      className={`px-3 py-1 rounded-xl text-xs font-medium transition-all ${
+                        sprintDurationMinutes === m
+                          ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs font-semibold'
+                          : 'bg-[var(--bg-paper-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)]'
+                      }`}
+                    >
+                      {m}m
+                    </button>
+                  ))}
                   <button
-                    key={m}
-                    onClick={() => setSprintDurationMinutes(m)}
-                    className={`px-3 py-1 rounded-xl text-xs font-medium transition-all ${
-                      sprintDurationMinutes === m
-                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs font-semibold'
+                    onClick={() => setIsCustomDurationModalOpen(true)}
+                    className={`px-3 py-1 rounded-xl text-xs font-medium transition-colors ${
+                      ![10, 15, 20, 30].includes(sprintDurationMinutes)
+                        ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
                         : 'bg-[var(--bg-paper-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)]'
                     }`}
                   >
-                    {m}m
+                    Custom
                   </button>
-                ))}
-                <button
-                  onClick={() => setIsCustomDurationModalOpen(true)}
-                  className={`px-3 py-1 rounded-xl text-xs font-medium transition-colors ${
-                    ![10, 15, 20, 30].includes(sprintDurationMinutes)
-                      ? 'bg-[var(--accent)] text-[var(--accent-contrast)] font-semibold'
-                      : 'bg-[var(--bg-paper-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)]'
-                  }`}
-                >
-                  Custom
-                </button>
+                </div>
+              </div>
+
+              {/* Question Count Setting */}
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+                <span className="text-xs font-semibold text-[var(--text-secondary)]">
+                  Questions:
+                </span>
+                <div className="flex items-center gap-1">
+                  {[3, 5, 7].map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setQuestionCountSetting(c)}
+                      className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all ${
+                        questionCountSetting === c
+                          ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-xs font-semibold'
+                          : 'bg-[var(--bg-paper-subtle)] text-[var(--text-secondary)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)]'
+                      }`}
+                    >
+                      {c}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
-            {/* Launch Buttons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleGetAnotherTopic}
-                className="px-4 py-2 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-paper-hover)] transition-colors border border-[var(--border-color)]"
-              >
-                Surprise Me Again
-              </button>
+            {/* Notice / Exhaustion Alert Banner */}
+            {generationNotice && (
+              <div className={`p-3.5 rounded-2xl border text-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+                generationNotice.status === 'exhausted'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-800 dark:text-amber-200'
+                  : 'bg-rose-500/10 border-rose-500/30 text-rose-800 dark:text-rose-200'
+              }`}>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>{generationNotice.message}</span>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {generationNotice.status === 'exhausted' ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleStartSprint(currentTopic, { allowRepeats: true })}
+                        className="px-3 py-1 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-medium shadow-2xs"
+                      >
+                        Start in Revision Mode
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleGetAnotherTopic}
+                        className="px-3 py-1 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)] text-[var(--text-primary)]"
+                      >
+                        Try Another Topic
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleStartSprint(currentTopic, { offlineOnly: true })}
+                        className="px-3 py-1 rounded-xl bg-[var(--accent)] text-[var(--accent-contrast)] font-medium"
+                      >
+                        Start with Curated Offline Questions
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleStartSprint()}
+                        className="px-3 py-1 rounded-xl bg-[var(--bg-paper)] border border-[var(--border-color)]"
+                      >
+                        Retry Generation
+                      </button>
+                    </>
+                  )}
+                </div>
+              </div>
+            )}
 
-              <button
-                onClick={() => handleStartSprint()}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-sm font-semibold shadow-xs transition-transform active:scale-95"
-              >
-                <Play className="w-4 h-4 fill-current" />
-                <span>Start {sprintDurationMinutes}-Min Sprint</span>
-              </button>
+            {/* Launch Buttons Strip */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Source Grounding & Anti-Repeat Protection Active</span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleGetAnotherTopic}
+                  disabled={isGeneratingQuestions}
+                  className="px-4 py-2 rounded-xl text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-paper-hover)] transition-colors border border-[var(--border-color)] disabled:opacity-50"
+                >
+                  Surprise Me Again
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleStartSprint()}
+                  disabled={isGeneratingQuestions}
+                  className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-[var(--accent-contrast)] text-sm font-semibold shadow-xs transition-transform active:scale-95 disabled:opacity-75 disabled:cursor-not-allowed"
+                >
+                  {isGeneratingQuestions ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Grounding Questions...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 fill-current" />
+                      <span>Start {sprintDurationMinutes}-Min Sprint</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -1125,24 +1567,256 @@ function LearningSprintContent() {
           )}
         </div>
 
-        {/* 1. Key Questions Section */}
-        <div className="journal-paper p-5 sm:p-6 rounded-2xl border border-[var(--border-color)] space-y-3">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase tracking-wider text-[var(--text-secondary)] flex items-center gap-1.5">
-              <HelpCircle className="w-4 h-4 text-[var(--accent)]" />
-              <span>What am I trying to understand? (Key Questions)</span>
-            </span>
-            <button
-              type="button"
-              onClick={() => setKeyQuestions(prev => [...prev, ''])}
-              className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1 font-medium"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add Question</span>
-            </button>
-          </div>
+        {/* 1. Dynamic Question Studio & Active Recall */}
+        {structuredQuestions.length > 0 && (() => {
+          const currentQ = structuredQuestions[currentQuestionIndex] || structuredQuestions[0];
+          const formatLabels: Record<string, string> = {
+            explanation: 'Concept Mechanics & Execution',
+            scenario: 'Applied Scenario & Architecture',
+            comparison: 'Comparative Trade-Offs',
+            troubleshooting: 'Diagnostics & Debugging',
+            prediction: 'System Prediction & Edge Cases',
+            mcq: 'Objective Verification Quiz',
+            short_answer: 'Focused Inquiry'
+          };
 
-          <div className="space-y-2">
+          return (
+            <div className="journal-paper p-5 sm:p-6 rounded-2xl border border-[var(--border-color)] space-y-4">
+              {/* Studio Header */}
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[var(--border-color)] pb-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-[var(--accent)] text-[var(--accent-contrast)] shadow-2xs">
+                    Question {currentQuestionIndex + 1} of {structuredQuestions.length}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-secondary)]">
+                    {formatLabels[currentQ.format] || currentQ.format}
+                  </span>
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--accent)]/30">
+                    {currentQ.difficulty}
+                  </span>
+                  {currentQ.origin === 'dynamic_generator' && (
+                    <span className="text-[10px] text-purple-600 dark:text-purple-400 font-medium flex items-center gap-1">
+                      <Sparkles className="w-3 h-3" />
+                      <span>AI Dynamic</span>
+                    </span>
+                  )}
+                  {currentQ.origin === 'curated_source' && (
+                    <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <ShieldCheck className="w-3 h-3" />
+                      <span>Source Grounded</span>
+                    </span>
+                  )}
+                  {currentQ.origin === 'fallback_material' && (
+                    <span className="text-[10px] text-[var(--text-muted)] font-medium">
+                      Offline Prompt
+                    </span>
+                  )}
+                </div>
+
+                {currentQ.sourceReferences?.[0]?.url && (
+                  <a
+                    href={currentQ.sourceReferences[0].url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline max-w-[240px] truncate"
+                    title={currentQ.sourceReferences[0].title}
+                  >
+                    <BookOpen className="w-3.5 h-3.5 shrink-0" />
+                    <span className="truncate">{currentQ.sourceReferences[0].title}</span>
+                    <ExternalLink className="w-3 h-3 shrink-0" />
+                  </a>
+                )}
+              </div>
+
+              {/* Prompt Text */}
+              <div className="p-4 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)]">
+                <p className="font-serif-aesthetic text-base sm:text-lg font-bold text-[var(--text-primary)] leading-relaxed">
+                  {currentQ.prompt}
+                </p>
+              </div>
+
+              {/* Interaction: MCQ or Open Synthesis */}
+              {currentQ.format === 'mcq' && Array.isArray(currentQ.choices) && currentQ.choices.length >= 3 ? (
+                <div className="space-y-2">
+                  {currentQ.choices.map((choice, cIdx) => {
+                    const isSelected = userAnswers[currentQ.id] === cIdx;
+                    const isRevealed = Boolean(revealedExplanations[currentQ.id]);
+                    const isCorrect = cIdx === currentQ.correctChoiceIndex;
+                    let choiceClass = 'bg-[var(--bg-paper-subtle)] border-[var(--border-color)] text-[var(--text-secondary)] hover:border-[var(--accent)]';
+                    if (isRevealed) {
+                      if (isCorrect) choiceClass = 'bg-emerald-500/15 border-emerald-500 text-emerald-800 dark:text-emerald-200 font-semibold';
+                      else if (isSelected) choiceClass = 'bg-rose-500/15 border-rose-500 text-rose-800 dark:text-rose-200';
+                    } else if (isSelected) {
+                      choiceClass = 'border-[var(--accent)] bg-[var(--accent-soft)] text-[var(--accent)] font-semibold';
+                    }
+                    return (
+                      <button
+                        key={cIdx}
+                        type="button"
+                        onClick={() => setUserAnswers(prev => ({ ...prev, [currentQ.id]: cIdx }))}
+                        className={`w-full text-left p-3 rounded-xl border transition-all flex items-start gap-3 text-xs sm:text-sm ${choiceClass}`}
+                      >
+                        <span className="font-mono font-bold text-xs px-2 py-0.5 rounded-md bg-black/5 dark:bg-white/5 shrink-0">
+                          {String.fromCharCode(65 + cIdx)}
+                        </span>
+                        <span className="flex-1">{choice}</span>
+                        {isRevealed && isCorrect && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />}
+                      </button>
+                    );
+                  })}
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setRevealedExplanations(prev => ({ ...prev, [currentQ.id]: !prev[currentQ.id] }))}
+                      className="text-xs font-semibold text-[var(--accent)] hover:underline flex items-center gap-1"
+                    >
+                      {revealedExplanations[currentQ.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{revealedExplanations[currentQ.id] ? 'Hide Answer Rationale' : 'Check Answer & Rationale'}</span>
+                    </button>
+                  </div>
+
+                  {revealedExplanations[currentQ.id] && (
+                    <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-xs space-y-1 text-emerald-900 dark:text-emerald-200 animate-in fade-in duration-150">
+                      <div className="font-semibold flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Answer Rationale (Grounded Evidence):</span>
+                      </div>
+                      <p>{currentQ.explanation || currentQ.referenceAnswer}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
+                    <span className="font-semibold uppercase tracking-wider text-[11px] text-[var(--text-secondary)]">
+                      Active Synthesis / Notes for this Question:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setRevealedExplanations(prev => ({ ...prev, [currentQ.id]: !prev[currentQ.id] }))}
+                      className="text-[var(--accent)] hover:underline flex items-center gap-1 font-medium text-xs"
+                    >
+                      {revealedExplanations[currentQ.id] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      <span>{revealedExplanations[currentQ.id] ? 'Hide Guidance' : 'Reveal Source Reference & Guidance'}</span>
+                    </button>
+                  </div>
+                  <textarea
+                    value={(userAnswers[currentQ.id] as string) || ''}
+                    onChange={e => setUserAnswers(prev => ({ ...prev, [currentQ.id]: e.target.value }))}
+                    placeholder="Write your explanation, findings, or notes regarding this specific question..."
+                    rows={3}
+                    className="w-full text-xs p-3 rounded-xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)] resize-y"
+                  />
+                  {revealedExplanations[currentQ.id] && (
+                    <div className="p-3.5 rounded-xl bg-[var(--accent-soft)] border border-[var(--accent)]/30 text-xs space-y-1 text-[var(--text-primary)] animate-in fade-in duration-150">
+                      <div className="font-semibold text-[var(--accent)] flex items-center gap-1.5">
+                        <HelpCircle className="w-3.5 h-3.5" />
+                        <span>Source Guidance & Reference Context:</span>
+                      </div>
+                      <p className="font-serif-aesthetic">{currentQ.referenceAnswer || currentQ.explanation}</p>
+                      {currentQ.sourceReferences?.[0]?.title && (
+                        <div className="text-[10px] text-[var(--text-muted)] pt-1 border-t border-[var(--accent)]/20">
+                          Citation: {currentQ.sourceReferences[0].title}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Navigation Strip */}
+              <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-[var(--border-color)]">
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                    disabled={currentQuestionIndex === 0}
+                    className="px-3 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-secondary)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                    <span>Previous</span>
+                  </button>
+
+                  <div className="flex items-center gap-1 px-1 max-w-[200px] overflow-x-auto">
+                    {structuredQuestions.map((_, dotIdx) => (
+                      <button
+                        key={dotIdx}
+                        type="button"
+                        onClick={() => setCurrentQuestionIndex(dotIdx)}
+                        className={`w-6 h-6 rounded-lg text-xs font-semibold transition-all shrink-0 ${
+                          currentQuestionIndex === dotIdx
+                            ? 'bg-[var(--accent)] text-[var(--accent-contrast)] shadow-2xs'
+                            : 'bg-[var(--bg-paper-subtle)] border border-[var(--border-color)] text-[var(--text-muted)] hover:text-[var(--text-primary)]'
+                        }`}
+                      >
+                        {dotIdx + 1}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentQuestionIndex(prev => Math.min(structuredQuestions.length - 1, prev + 1))}
+                    disabled={currentQuestionIndex === structuredQuestions.length - 1}
+                    className="px-3 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-medium text-[var(--text-secondary)] disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1"
+                  >
+                    <span>Next</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleGetMoreQuestions}
+                  disabled={isFetchingMoreQuestions}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[var(--bg-paper-subtle)] hover:bg-[var(--bg-paper-hover)] border border-[var(--border-color)] text-xs font-semibold text-[var(--accent)] transition-colors disabled:opacity-50"
+                  title="Request novel questions grounded in material"
+                >
+                  {isFetchingMoreQuestions ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Fetching...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Get More Questions</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {activeRefillNotice && (
+                <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>{activeRefillNotice}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRefillNotice(null)}
+                    className="text-[10px] text-[var(--text-muted)] hover:text-[var(--text-primary)] px-2 py-0.5 rounded-md hover:bg-black/5 dark:hover:bg-white/5"
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
+            </div>
+          );
+        })()}
+
+        {/* Collapsible Custom Key Questions (Optional) */}
+        <details className="journal-paper p-4 rounded-2xl border border-[var(--border-color)] text-xs space-y-3 group">
+          <summary className="flex items-center justify-between cursor-pointer font-semibold uppercase tracking-wider text-[var(--text-secondary)] list-none">
+            <span className="flex items-center gap-1.5">
+              <HelpCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Custom Key Questions ({keyQuestions.length})</span>
+            </span>
+            <span className="text-[11px] text-[var(--accent)] font-normal group-open:hidden">+ View / Edit Raw List</span>
+          </summary>
+
+          <div className="space-y-2 pt-2 border-t border-[var(--border-color)]">
             {keyQuestions.map((q, idx) => (
               <div key={idx} className="flex items-center gap-2">
                 <span className="text-xs font-bold text-[var(--accent)] w-5 text-right">{idx + 1}.</span>
@@ -1169,8 +1843,16 @@ function LearningSprintContent() {
                 )}
               </div>
             ))}
+            <button
+              type="button"
+              onClick={() => setKeyQuestions(prev => [...prev, ''])}
+              className="text-xs text-[var(--accent)] hover:underline flex items-center gap-1 font-medium pt-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Custom Question</span>
+            </button>
           </div>
-        </div>
+        </details>
 
         {/* 2. Research Notes Workspace */}
         <div className="journal-paper p-5 sm:p-6 rounded-2xl border border-[var(--border-color)] space-y-3">
