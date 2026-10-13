@@ -303,36 +303,41 @@ describe('Learning Sprint — Phase LS2.1: Gemini Adapter & History Near-Repeat 
     });
 
     it('returns corrected exhaustion message when material novelty is exhausted', async () => {
-      // Get all available questions
-      const run1 = await questionService.generateQuestions({
+      // Consume all questions from the material
+      const allFps: string[] = [];
+      const allSignals: any[] = [];
+      let run = await questionService.generateQuestions({
         topic: 'TypeScript',
-        desiredCount: 8
-      });
-
-      const allFps = run1.questions.map(q => q.fingerprint);
-      const allSignals = run1.questions.map(q => ({
-        fingerprint: q.fingerprint,
-        concept: q.concept,
-        format: q.format,
-        objective: q.objective,
-        promptSnippet: normalizeQuestionText(q.prompt).slice(0, 160)
-      }));
-
-      // Request with all fingerprints and signals excluded and maxRefillAttempts: 0
-      const exhaustedRun = await questionService.generateQuestions({
-        topic: 'TypeScript',
-        desiredCount: 5,
+        desiredCount: 8,
         excludeFingerprints: allFps,
-        historySignals: allSignals,
-        maxRefillAttempts: 0
+        historySignals: allSignals
       });
+      while (run.statusCode === 'SUCCESS' || run.statusCode === 'PARTIAL_BATCH') {
+        for (const q of run.questions) {
+          allFps.push(q.fingerprint);
+          allSignals.push({
+            fingerprint: q.fingerprint,
+            concept: q.concept,
+            format: q.format,
+            objective: q.objective,
+            promptSnippet: normalizeQuestionText(q.prompt).slice(0, 160)
+          });
+        }
+        run = await questionService.generateQuestions({
+          topic: 'TypeScript',
+          desiredCount: 5,
+          excludeFingerprints: allFps,
+          historySignals: allSignals,
+          maxRefillAttempts: 0
+        });
+      }
 
-      assert.strictEqual(exhaustedRun.statusCode, 'NO_NEW_QUESTIONS');
+      assert.strictEqual(run.statusCode, 'NO_NEW_QUESTIONS');
       assert.strictEqual(
-        exhaustedRun.message,
+        run.message,
         'No new questions found in the currently available material. Try another subtopic or source.'
       );
-      assert.strictEqual(exhaustedRun.questions.length, 0);
+      assert.strictEqual(run.questions.length, 0);
     });
   });
 

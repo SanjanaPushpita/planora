@@ -9,6 +9,21 @@ import { normalizeQuestionText } from './question-dedup';
 
 const MAX_HISTORY_PER_TOPIC = 100;
 
+/**
+ * Normalizes topic names to bridge aliases (e.g. "Python" vs "Python Programming", "TypeScript Mastery" vs "TypeScript")
+ * while preserving original storage records intact.
+ */
+export function canonicalizeTopicKey(topic: string): string {
+  if (!topic || typeof topic !== 'string') return '';
+  return topic
+    .toLowerCase()
+    .replace(/^(how\s+(does|do|the|a)\s+|what\s+(is|are)\s+|why\s+(does|do|is|are)\s+)/i, '')
+    .replace(/\s+(work|works|operate|operates|in modern systems|mastery|fundamentals|programming|basics)\b/gi, '')
+    .replace(/[\?\(\)\,\.\:\-\_\/\&]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function getStorageKey(userId?: string): string {
   const safeId = userId && userId.trim() ? userId.trim() : 'guest_user';
   return `planora_question_history_${safeId}`;
@@ -16,6 +31,7 @@ function getStorageKey(userId?: string): string {
 
 /**
  * Loads user question history from local persistence.
+ * Bridges pre-hydration guest entries and aliases safely.
  */
 export function loadUserQuestionHistory(userId?: string, topic?: string): QuestionHistoryEntry[] {
   if (typeof window === 'undefined') {
@@ -24,14 +40,40 @@ export function loadUserQuestionHistory(userId?: string, topic?: string): Questi
 
   try {
     const raw = localStorage.getItem(getStorageKey(userId));
-    if (!raw) return [];
+    let parsed: QuestionHistoryEntry[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(parsed)) parsed = [];
 
-    const parsed: QuestionHistoryEntry[] = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    // If authenticated, also merge any pre-hydration guest entries
+    if (userId && userId.trim() && userId.trim() !== 'guest_user') {
+      try {
+        const guestRaw = localStorage.getItem(getStorageKey('guest_user'));
+        if (guestRaw) {
+          const guestParsed: QuestionHistoryEntry[] = JSON.parse(guestRaw);
+          if (Array.isArray(guestParsed)) {
+            const existingFps = new Set(parsed.map(p => p.fingerprint));
+            for (const g of guestParsed) {
+              if (g && g.fingerprint && !existingFps.has(g.fingerprint)) {
+                parsed.push(g);
+                existingFps.add(g.fingerprint);
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-blocking guest merge
+      }
+    }
 
     if (topic && topic.trim()) {
       const normalizedTopic = topic.trim().toLowerCase();
-      return parsed.filter(item => item.topic && item.topic.toLowerCase() === normalizedTopic);
+      const canonTopic = canonicalizeTopicKey(topic);
+      return parsed.filter(item => {
+        if (!item.topic) return false;
+        const itemNorm = item.topic.trim().toLowerCase();
+        if (itemNorm === normalizedTopic) return true;
+        if (canonTopic && canonicalizeTopicKey(item.topic) === canonTopic) return true;
+        return false;
+      });
     }
 
     return parsed;

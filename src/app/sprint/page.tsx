@@ -134,6 +134,7 @@ function LearningSprintContent() {
   const [generationNotice, setGenerationNotice] = useState<{ status: 'exhausted' | 'error' | 'partial'; message: string } | null>(null);
   const [activeRefillNotice, setActiveRefillNotice] = useState<string | null>(null);
   const activeAbortControllerRef = useRef<AbortController | null>(null);
+  const activeRequestIdRef = useRef<string>('');
 
   // Modals & temporary inputs
   const [isAddSourceModalOpen, setIsAddSourceModalOpen] = useState(false);
@@ -473,6 +474,8 @@ function LearningSprintContent() {
     }
     const abortCtrl = new AbortController();
     activeAbortControllerRef.current = abortCtrl;
+    const currentReqId = generateId();
+    activeRequestIdRef.current = currentReqId;
 
     try {
       let excludedFps: string[] = [];
@@ -516,6 +519,11 @@ function LearningSprintContent() {
 
       const data: GenerateQuestionsResponse = await res.json();
 
+      // Discard stale responses from superseded requests
+      if (activeRequestIdRef.current !== currentReqId) {
+        return;
+      }
+
       if (data.statusCode === 'NO_NEW_QUESTIONS') {
         setIsGeneratingQuestions(false);
         setGenerationNotice({
@@ -537,8 +545,11 @@ function LearningSprintContent() {
       const questionsToUse = data.questions && data.questions.length > 0 ? data.questions : [];
 
       if (questionsToUse.length === 0) {
-        // Fallback to offline starter questions
-        handleStartSprint(topicObj, { offlineOnly: true });
+        setIsGeneratingQuestions(false);
+        setGenerationNotice({
+          status: data.statusCode === 'PARTIAL_BATCH' ? 'partial' : 'exhausted',
+          message: data.message || 'No new questions found in the currently available material. Try another subtopic or source.'
+        });
         return;
       }
 
@@ -629,6 +640,8 @@ function LearningSprintContent() {
     if (isFetchingMoreQuestions) return;
     setIsFetchingMoreQuestions(true);
     setActiveRefillNotice(null);
+    const currentReqId = generateId();
+    activeRequestIdRef.current = currentReqId;
 
     try {
       const currentFps = structuredQuestions.map(q => q.fingerprint);
@@ -670,15 +683,35 @@ function LearningSprintContent() {
       if (!res.ok) throw new Error('Refill request failed');
       const data: GenerateQuestionsResponse = await res.json();
 
+      // Discard stale responses from superseded refill requests
+      if (activeRequestIdRef.current !== currentReqId) {
+        return;
+      }
+
       if (data.statusCode === 'NO_NEW_QUESTIONS' || !data.questions || data.questions.length === 0) {
         setActiveRefillNotice(data.message || 'No new questions found in the currently available material. Try another subtopic or source.');
         return;
       }
 
-      recordServedQuestions(profile?.id, data.questions);
-      const nextBatch = [...structuredQuestions, ...data.questions];
+      // Re-check against active cards to eliminate concurrency races
+      const activeFps = new Set(structuredQuestions.map(q => q.fingerprint));
+      const novelQuestions = data.questions.filter(q => !activeFps.has(q.fingerprint));
+
+      if (novelQuestions.length === 0) {
+        setActiveRefillNotice('No additional novel questions found in this material. You have thoroughly explored this topic.');
+        return;
+      }
+
+      recordServedQuestions(profile?.id, novelQuestions);
+      const nextBatch = [...structuredQuestions, ...novelQuestions];
       setStructuredQuestions(nextBatch);
       setKeyQuestions(nextBatch.map(q => q.prompt));
+
+      // Persist to active sprint draft immediately
+      syncActiveSprintDraft({
+        structuredQuestions: nextBatch,
+        keyQuestions: nextBatch.map(q => q.prompt)
+      });
 
       if (data.retrievedSources && data.retrievedSources.length > 0) {
         const newSources: LearningSource[] = data.retrievedSources
@@ -1036,20 +1069,16 @@ function LearningSprintContent() {
             </p>
           </div>
 
-          {/* Starter Questions Teaser */}
-          {currentTopic.starterQuestions && currentTopic.starterQuestions.length > 0 && (
-            <div className="p-4 rounded-2xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)]/80 space-y-1.5">
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--text-muted)] flex items-center gap-1.5">
-                <HelpCircle className="w-3.5 h-3.5 text-[var(--accent)]" />
-                <span>Guiding Questions to Explore:</span>
-              </div>
-              <ul className="space-y-1 text-xs text-[var(--text-secondary)] list-disc list-inside">
-                {currentTopic.starterQuestions.map((q, idx) => (
-                  <li key={idx} className="font-serif-aesthetic">{q}</li>
-                ))}
-              </ul>
+          {/* Dynamic Grounded Engine Indicator */}
+          <div className="p-4 rounded-2xl bg-[var(--bg-paper-subtle)] border border-[var(--border-color)]/80 space-y-1.5">
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[var(--accent)] flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-[var(--accent)]" />
+              <span>Dynamic Grounded Question Engine:</span>
             </div>
-          )}
+            <p className="text-xs text-[var(--text-secondary)] font-serif-aesthetic leading-relaxed">
+              Every sprint dynamically retrieves authoritative educational material and synthesizes fresh, novel reasoning challenges verified against your study history.
+            </p>
+          </div>
 
           {/* Sprint Settings: Length & Question Count */}
           <div className="pt-2 border-t border-[var(--border-color)] space-y-3">

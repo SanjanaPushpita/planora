@@ -192,6 +192,16 @@ export function checkDuplicateAgainstCollection(
         conflictingFingerprint: entry.fingerprint
       };
     }
+
+    // 5. Quote/evidence overlap: if candidate shares the same specific concept and has high token overlap
+    if (sameConcept && compositeSim >= 0.48) {
+      return {
+        isDuplicate: true,
+        reason: 'NEAR_PARAPHRASE',
+        similarityScore: compositeSim,
+        conflictingFingerprint: entry.fingerprint
+      };
+    }
   }
 
   return { isDuplicate: false };

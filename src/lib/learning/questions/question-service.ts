@@ -179,11 +179,22 @@ export class QuestionService {
       refillAttempts++;
       const deficit = desiredCount - acceptedQuestions.length;
       
-      // Shift formats/objectives to attempt alternative reasoning angles
+      // Shift formats/objectives to attempt alternative reasoning angles with current batch signals
+      const refillHistorySignals = [
+        ...(request.historySignals || []),
+        ...currentBatchEntries.map(e => ({
+          fingerprint: e.fingerprint,
+          concept: e.concept,
+          format: e.format as any,
+          objective: e.objective as any,
+          promptSnippet: e.normalizedPromptSnippet
+        }))
+      ];
       const refillCandidates = generateFromRetrievedPassages(material, {
         ...request,
         desiredCount: deficit * 2,
-        formats: ['comparison', 'troubleshooting', 'scenario', 'explanation', 'mcq']
+        formats: ['comparison', 'troubleshooting', 'scenario', 'explanation', 'mcq'],
+        historySignals: refillHistorySignals
       });
 
       totalCandidates += refillCandidates.length;

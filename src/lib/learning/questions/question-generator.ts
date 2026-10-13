@@ -69,9 +69,55 @@ function extractSentencesFromPassages(passages: string[]): string[] {
 }
 
 /**
+ * Checks whether an extracted source sentence was already covered in recent user history or active batch.
+ */
+function isSentenceCovered(
+  sentence: string,
+  historySignals?: Array<{ promptSnippet?: string; fingerprint?: string }>
+): boolean {
+  if (!historySignals || historySignals.length === 0) return false;
+  const normSentence = sentence.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!normSentence || normSentence.length < 15) return false;
+
+  const words = normSentence.split(' ').filter(w => w.length > 3);
+  if (words.length < 3) return false;
+  const core30 = normSentence.slice(0, 45);
+
+  for (const sig of historySignals) {
+    if (!sig || !sig.promptSnippet) continue;
+    const normSnippet = sig.promptSnippet.toLowerCase().replace(/[^\w\s]/g, ' ').replace(/\s+/g, ' ').trim();
+    if (normSnippet.includes(core30)) {
+      return true;
+    }
+    let matchedWords = 0;
+    for (const w of words) {
+      if (normSnippet.includes(w)) matchedWords++;
+    }
+    if (words.length > 0 && matchedWords / words.length >= 0.70) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Extracts a concise, specific concept label from a source sentence.
+ */
+function extractSentenceConcept(sentence: string, topic: string): string {
+  const cleaned = sentence.replace(/^(the|a|an|in|for|with|by|under)\s+/i, '').trim();
+  const clause = cleaned.split(/[,:;]/)[0].trim();
+  const words = clause.split(/\s+/).slice(0, 5).join(' ');
+  if (words.length >= 4 && words.length <= 45) {
+    return `${topic} - ${words}`;
+  }
+  return `${topic} - Core Principles`;
+}
+
+/**
  * Builds grounded deterministic reasoning questions from retrieved source material.
  * Focuses on genuine cognitive tasks (explanation, scenario, comparison, troubleshooting)
  * without generic word-chopping or fake boilerplate distractors.
+ * Prioritizes unseen concepts across consecutive batches.
  */
 export function generateFromRetrievedPassages(
   material: RetrievedMaterial,
@@ -82,6 +128,13 @@ export function generateFromRetrievedPassages(
   const language = request.language || 'English';
   const rawPassages = material.keyPassages.length > 0 ? material.keyPassages : [material.content];
   const sentences = extractSentencesFromPassages(rawPassages);
+
+  // Partition into unseen vs already-covered sentences
+  const unseenSentences = sentences.filter(s => !isSentenceCovered(s, request.historySignals));
+  const seenSentences = sentences.filter(s => isSentenceCovered(s, request.historySignals));
+  
+  // Prioritize unseen sentences first
+  const candidatePool = [...unseenSentences, ...seenSentences];
 
   const formats: QuestionFormat[] = request.formats && request.formats.length > 0
     ? request.formats
@@ -102,8 +155,9 @@ export function generateFromRetrievedPassages(
   for (let i = 0; i < count; i++) {
     const format = formats[i % formats.length];
     const objective = objectives[i % objectives.length];
-    const sentence = sentences[i % sentences.length];
-    const fullPassage = rawPassages[i % rawPassages.length];
+    const sentence = candidatePool[i % candidatePool.length];
+    const fullPassage = rawPassages.find(p => p.includes(sentence)) || rawPassages[i % rawPassages.length];
+    const concept = extractSentenceConcept(sentence, material.topic);
 
     let prompt = '';
     let choices: string[] | undefined = undefined;
@@ -111,54 +165,41 @@ export function generateFromRetrievedPassages(
     let referenceAnswer: string | undefined = undefined;
     let explanation: string | undefined = undefined;
     let isObjective = false;
-    let concept = material.topic;
 
     if (format === 'explanation') {
-      concept = `${material.topic} - Mechanics & Execution`;
       prompt = `Based on the principles documented in "${material.title}", explain how the following behavior operates in practice: "${sentence}"`;
       referenceAnswer = `Grounded in source passage: "${fullPassage}"`;
       explanation = `Assesses comprehension of underlying mechanics from authoritative material.`;
       isObjective = false;
     } else if (format === 'scenario') {
-      concept = `${material.topic} - Applied Architecture`;
       prompt = `In an application utilizing ${material.topic}, consider a scenario where: "${sentence}". How should the implementation be structured to ensure reliability and correct behavior?`;
       referenceAnswer = `Application guidance according to source: "${fullPassage}"`;
       explanation = `Evaluates applied problem-solving in production conditions.`;
       isObjective = false;
     } else if (format === 'comparison') {
-      concept = `${material.topic} - Comparative Trade-Offs`;
       prompt = `Analyze the structural trade-offs described for ${material.topic}: "${sentence}". What are the key advantages and drawbacks compared to alternative approaches?`;
       referenceAnswer = `Key trade-off distinctions: "${fullPassage}"`;
       explanation = `Examines analytical contrast and architectural trade-offs.`;
       isObjective = false;
     } else if (format === 'troubleshooting') {
-      concept = `${material.topic} - Debugging & Failure Isolation`;
       prompt = `An unexpected defect or inconsistency occurs in ${material.topic} relating to: "${sentence}". What diagnostic checks or root causes should be evaluated to resolve this?`;
       referenceAnswer = `Root cause diagnostic context: "${fullPassage}"`;
       explanation = `Focuses on troubleshooting failure modes and system behavior.`;
       isObjective = false;
     } else if (format === 'mcq') {
-      concept = `${material.topic} - Core Principles`;
       isObjective = true;
-      prompt = `Which of the following statements accurately represents the documented behavior of ${material.topic}?`;
+      prompt = `According to documentation for ${material.topic}, which of the following statements accurately represents the behavior regarding: "${concept}"?`;
       const correctChoice = sentence;
-      
-      const distractors: string[] = [];
-      // Use other sentences if available
-      for (const s of sentences) {
-        if (s !== sentence && !distractors.includes(s) && distractors.length < 3) {
-          distractors.push(s);
-        }
-      }
 
-      // If fewer than 3 other sentences, construct plausible semantic contrast statements
+      // Construct plausible semantic contrast statements that directly contradict or alter the documented assertion
       const contextualDistractors = [
-        `Operations run synchronously without queuing microtasks or macrotasks`,
-        `State updates bypass lexical scope and execute in isolation`,
-        `Execution terminates prematurely upon encountering asynchronous promises`,
-        `Frames are evicted from the call stack before completing their execution block`
+        `Operations execute synchronously without queuing microtasks or macrotasks`,
+        `State updates bypass lexical scope and execute in isolated frames`,
+        `Execution terminates prematurely upon encountering asynchronous boundaries`,
+        `Memory is buffered eagerly in full sequential arrays prior to iteration`
       ];
 
+      const distractors: string[] = [];
       for (const cd of contextualDistractors) {
         if (distractors.length >= 3) break;
         if (cd !== correctChoice && !distractors.includes(cd)) {
@@ -171,7 +212,6 @@ export function generateFromRetrievedPassages(
       referenceAnswer = correctChoice;
       explanation = `Directly grounded in documented statement from "${material.title}": "${fullPassage}".`;
     } else {
-      concept = `${material.topic} - Focused Inquiry`;
       prompt = `How does ${material.topic} handle the following condition documented in "${material.title}": "${sentence}"?`;
       referenceAnswer = fullPassage;
       isObjective = false;
@@ -193,7 +233,7 @@ export function generateFromRetrievedPassages(
       correctChoiceIndex,
       referenceAnswer,
       explanation,
-      sourceReferences: [{ ...sourceRef, evidenceSnippet: sentence.slice(0, 120) }],
+      sourceReferences: [{ ...sourceRef, evidenceSnippet: sentence.slice(0, 140) }],
       origin: 'curated_source',
       groundingStatus: isObjective ? 'fully_grounded' : 'open_inquiry',
       isObjective

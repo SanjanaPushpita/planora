@@ -72,23 +72,25 @@ describe('Learning Sprint UI & Session Integration — LS2 Test Suite', () => {
     });
 
     it('returns NO_NEW_QUESTIONS when all candidate novelty is exhausted', async () => {
-      const firstRun = await questionService.generateQuestions({
+      const allFps: string[] = [];
+      let run = await questionService.generateQuestions({
         topic: 'TypeScript',
-        desiredCount: 5
-      });
-      assert.strictEqual(firstRun.statusCode, 'SUCCESS');
-
-      const allFps = firstRun.questions.map(q => q.fingerprint);
-
-      const secondRun = await questionService.generateQuestions({
-        topic: 'TypeScript',
-        desiredCount: 5,
+        desiredCount: 8,
         excludeFingerprints: allFps,
         maxRefillAttempts: 0
       });
+      while (run.statusCode === 'SUCCESS' || run.statusCode === 'PARTIAL_BATCH') {
+        for (const q of run.questions) allFps.push(q.fingerprint);
+        run = await questionService.generateQuestions({
+          topic: 'TypeScript',
+          desiredCount: 5,
+          excludeFingerprints: allFps,
+          maxRefillAttempts: 0
+        });
+      }
 
-      assert.strictEqual(secondRun.statusCode, 'NO_NEW_QUESTIONS');
-      assert.strictEqual(secondRun.questions.length, 0);
+      assert.strictEqual(run.statusCode, 'NO_NEW_QUESTIONS');
+      assert.strictEqual(run.questions.length, 0);
     });
   });
 
